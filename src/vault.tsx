@@ -1,19 +1,19 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { getPreferenceValues } from "@raycast/api";
-import { homedir } from "os";
-import { join } from "path";
-import Store from "./store";
-import checkInstall from "./check-install";
+import checkInstall from "./vault/presentation/check-install";
+import Store from "./vault/presentation/store";
 
 interface Preferences {
-  passwordStoreDir?: string;
+	passwordStoreDir?: string;
 }
 
 export default function Command() {
-  const { passwordStoreDir } = getPreferenceValues<Preferences>();
-  const storepath =
-    passwordStoreDir?.trim() || join(homedir(), ".password-store");
+	const { passwordStoreDir } = getPreferenceValues<Preferences>();
+	const storepath =
+		passwordStoreDir?.trim() || join(homedir(), ".password-store");
 
-  checkInstall();
+	checkInstall();
 
-  return <Store storepath={storepath} />;
+	return <Store storepath={storepath} />;
 }
