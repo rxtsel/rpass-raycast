@@ -10,7 +10,6 @@ import {
 import { loadVaultItems } from "../application/load-vault-items";
 import { ALL_FOLDERS, type VaultItem } from "../domain/vault-item";
 import Content from "./content";
-import { getEntryIcon } from "./icons";
 
 interface Props {
   storepath: string;
@@ -70,9 +69,7 @@ export default function Store({ storepath }: Props) {
         <List.Item
           key={item.entry}
           icon={
-            item.kind === "template"
-              ? getFavicon(item.faviconUrl)
-              : getEntryIcon(item.entry)
+            item.kind === "template" ? getFavicon(item.faviconUrl) : Icon.Lock
           }
           title={item.name}
           subtitle={item.kind === "template" ? item.label : undefined}
