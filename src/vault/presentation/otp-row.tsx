@@ -7,6 +7,7 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
+import { getProgressIcon } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
 import {
   generateOtp,
@@ -17,6 +18,7 @@ import { copyPassword, pastePassword } from "./clipboard";
 interface Props {
   entry: string;
   storepath: string;
+  passphrase?: string;
 }
 
 function urgencyColor(remaining: number, period: number): Color {
@@ -27,17 +29,17 @@ function urgencyColor(remaining: number, period: number): Color {
 }
 
 function formatCountdown(seconds: number): string {
-  return `${seconds}s`;
+  return `${seconds.toString().padStart(2, "0")}s`;
 }
 
-export default function OtpRow({ entry, storepath }: Props) {
+export default function OtpRow({ entry, storepath, passphrase }: Props) {
   const [result, setResult] = useState<OtpResult | null>(null);
   const [remaining, setRemaining] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function fetchOtp() {
     try {
-      const data = await generateOtp(entry, storepath);
+      const data = await generateOtp(entry, storepath, passphrase);
       setResult(data);
       setRemaining(data.remaining_seconds);
     } catch {
@@ -47,7 +49,7 @@ export default function OtpRow({ entry, storepath }: Props) {
 
   useEffect(() => {
     fetchOtp();
-  }, [entry]);
+  }, [entry, passphrase]);
 
   useEffect(() => {
     if (!result) return;
@@ -70,18 +72,20 @@ export default function OtpRow({ entry, storepath }: Props) {
   const code = result?.code ?? "------";
   const period = result?.period ?? 30;
   const color = urgencyColor(remaining, period);
+  const progress = remaining / period;
+  const countdown = formatCountdown(remaining);
 
   return (
     <List.Item
-      icon={{ source: Icon.Clock }}
+      icon={{ source: Icon.Hourglass }}
       title="TOTP"
       accessories={[
         {
           text: { value: code, color: Color.PrimaryText },
         },
         {
-          tag: { value: formatCountdown(remaining), color },
-          tooltip: `Refreshes in ${remaining}s`,
+          icon: getProgressIcon(progress, color),
+          tooltip: `Refreshes in ${countdown}`,
         },
       ]}
       actions={

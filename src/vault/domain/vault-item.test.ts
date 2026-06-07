@@ -2,44 +2,79 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cleanEntryPath, toVaultItem } from "./vault-item";
 
-test("parses template entries without decrypting vault content", () => {
-  assert.deepEqual(toVaultItem("Acme/github.com__person@example.test.gpg"), {
-    kind: "template",
-    entry: "Acme/github.com__person@example.test",
+test("uses favicon metadata when second path part is a domain", () => {
+  assert.deepEqual(toVaultItem("Acme/github.com.gpg"), {
+    entry: "Acme/github.com",
     name: "github.com",
     folder: "Acme",
-    username: "person@example.test",
+    label: undefined,
     faviconUrl: "https://github.com",
   });
 });
 
-test("keeps pass-compatible entries as full path fallback", () => {
+test("uses path after domain as label", () => {
+  assert.deepEqual(toVaultItem("Acme/github.com/person@example.test.gpg"), {
+    entry: "Acme/github.com/person@example.test",
+    name: "github.com",
+    folder: "Acme",
+    label: "person@example.test",
+    faviconUrl: "https://github.com",
+  });
+});
+
+test("keeps nested label paths after the domain", () => {
+  assert.deepEqual(toVaultItem("Work/github.com/accounts/admin.gpg"), {
+    entry: "Work/github.com/accounts/admin",
+    name: "github.com",
+    folder: "Work",
+    label: "accounts/admin",
+    faviconUrl: "https://github.com",
+  });
+});
+
+test("uses lock fallback metadata when second path part is not a domain", () => {
   assert.deepEqual(toVaultItem("personal/social/example-login.gpg"), {
-    kind: "pass",
     entry: "personal/social/example-login",
-    name: "personal/social/example-login",
+    name: "social/example-login",
+    folder: "personal",
   });
 });
 
-test("ignores invalid template domains", () => {
-  assert.deepEqual(toVaultItem("Personal/not-a-domain__person.gpg"), {
-    kind: "pass",
-    entry: "Personal/not-a-domain__person",
-    name: "Personal/not-a-domain__person",
+test("keeps single entries without folder", () => {
+  assert.deepEqual(toVaultItem("example-login.gpg"), {
+    entry: "example-login",
+    name: "example-login",
+    folder: undefined,
   });
 });
 
-test("requires a folder for template entries", () => {
-  assert.deepEqual(toVaultItem("github.com__person@example.test.gpg"), {
-    kind: "pass",
-    entry: "github.com__person@example.test",
-    name: "github.com__person@example.test",
+test("keeps invalid domains as lock fallback metadata", () => {
+  assert.deepEqual(toVaultItem("Personal/not-a-domain/person.gpg"), {
+    entry: "Personal/not-a-domain/person",
+    name: "not-a-domain/person",
+    folder: "Personal",
+  });
+});
+
+test("does not treat root domain as favicon metadata", () => {
+  assert.deepEqual(toVaultItem("github.com/person@example.test.gpg"), {
+    entry: "github.com/person@example.test",
+    name: "person@example.test",
+    folder: "github.com",
+  });
+});
+
+test("does not search domains deeper than second path part", () => {
+  assert.deepEqual(toVaultItem("Work/clients/github.com/admin.gpg"), {
+    entry: "Work/clients/github.com/admin",
+    name: "clients/github.com/admin",
+    folder: "Work",
   });
 });
 
 test("normalizes windows paths and strips gpg suffix", () => {
   assert.equal(
-    cleanEntryPath("Work\\example.com__user.gpg"),
-    "Work/example.com__user",
+    cleanEntryPath("Work\\example.com\\user.gpg"),
+    "Work/example.com/user",
   );
 });

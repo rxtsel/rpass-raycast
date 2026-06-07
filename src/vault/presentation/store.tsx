@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { listEntries } from "../../rpass/application/rpass-client";
 import {
   filterVaultItemsByFolder,
-  getTemplateVaultItems,
   getVaultFolders,
 } from "../application/filter-vault-items";
 import { loadVaultItems } from "../application/load-vault-items";
@@ -27,11 +26,7 @@ export default function Store({ storepath }: Props) {
       .finally(() => setIsLoading(false));
   }, [storepath]);
 
-  const templateItems = useMemo(() => getTemplateVaultItems(items), [items]);
-  const folders = useMemo(
-    () => getVaultFolders(templateItems),
-    [templateItems],
-  );
+  const folders = useMemo(() => getVaultFolders(items), [items]);
   const filteredItems = useMemo(
     () => filterVaultItemsByFolder(items, selectedFolder),
     [items, selectedFolder],
@@ -70,9 +65,9 @@ export default function Store({ storepath }: Props) {
           key={item.entry}
           icon={item.faviconUrl ? getFavicon(item.faviconUrl) : Icon.Lock}
           title={item.name}
-          subtitle={item.kind === "template" ? item.username : undefined}
+          subtitle={item.label}
           accessories={
-            item.kind === "template"
+            item.folder
               ? [{ tag: { value: item.folder, color: "#8E8E93" } }]
               : undefined
           }

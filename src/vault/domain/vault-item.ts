@@ -1,22 +1,12 @@
-export interface TemplateVaultItem {
-  kind: "template";
+export interface VaultItem {
   entry: string;
   name: string;
-  folder: string;
-  username: string;
-  faviconUrl: string;
+  folder?: string;
+  label?: string;
+  faviconUrl?: string;
 }
-
-export interface PassVaultItem {
-  kind: "pass";
-  entry: string;
-  name: string;
-}
-
-export type VaultItem = TemplateVaultItem | PassVaultItem;
 
 export const ALL_FOLDERS = "__all__";
-const TEMPLATE_SEPARATOR = "__";
 const DOMAIN_PATTERN =
   /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)+$/i;
 
@@ -24,47 +14,31 @@ export function cleanEntryPath(entry: string): string {
   return entry.replace(/\\/g, "/").replace(/\.gpg$/i, "");
 }
 
-function parseTemplateName(name: string):
-  | {
-      domain: string;
-      username: string;
-    }
-  | undefined {
-  const separatorIndex = name.indexOf(TEMPLATE_SEPARATOR);
-  if (separatorIndex <= 0) return undefined;
-
-  const domain = name.slice(0, separatorIndex).trim().toLowerCase();
-  const username = name
-    .slice(separatorIndex + TEMPLATE_SEPARATOR.length)
-    .trim();
-
-  if (!domain || !username || !DOMAIN_PATTERN.test(domain)) return undefined;
-
-  return { domain, username };
+function isDomain(value: string | undefined): value is string {
+  return Boolean(value && DOMAIN_PATTERN.test(value));
 }
 
 export function toVaultItem(entry: string): VaultItem {
   const cleanEntry = cleanEntryPath(entry);
   const parts = cleanEntry.split("/").filter(Boolean);
-  const fileName = parts.at(-1) ?? cleanEntry;
-  const folderParts = parts.slice(0, -1);
-  const template = parseTemplateName(fileName);
-  const folder = folderParts.join("/");
+  const folder = parts.length > 1 ? parts[0] : undefined;
+  const secondPathPart = parts[1]?.trim();
 
-  if (!template || !folder) {
+  if (folder && isDomain(secondPathPart)) {
+    const domain = secondPathPart.toLowerCase();
+
     return {
-      kind: "pass",
       entry: cleanEntry,
-      name: cleanEntry,
+      name: domain,
+      folder,
+      label: parts.slice(2).join("/").trim() || undefined,
+      faviconUrl: `https://${domain}`,
     };
   }
 
   return {
-    kind: "template",
     entry: cleanEntry,
-    name: template.domain,
-    username: template.username,
-    faviconUrl: `https://${template.domain}`,
+    name: folder ? parts.slice(1).join("/") : cleanEntry,
     folder,
   };
 }
