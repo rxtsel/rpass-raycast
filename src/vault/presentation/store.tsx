@@ -70,12 +70,12 @@ export default function Store({ storepath }: Props) {
         <List.Item
           key={item.entry}
           icon={
-            item.faviconUrl
+            item.kind === "template"
               ? getFavicon(item.faviconUrl)
               : getEntryIcon(item.entry)
           }
           title={item.name}
-          subtitle={item.kind === "template" ? item.username : undefined}
+          subtitle={item.kind === "template" ? item.label : undefined}
           accessories={
             item.kind === "template"
               ? [{ tag: { value: item.folder, color: "#8E8E93" } }]

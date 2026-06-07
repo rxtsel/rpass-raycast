@@ -2,13 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cleanEntryPath, toVaultItem } from "./vault-item";
 
-test("parses template entries without decrypting vault content", () => {
-  assert.deepEqual(toVaultItem("Acme/github.com__person@example.test.gpg"), {
+test("parses domain-only template entries", () => {
+  assert.deepEqual(toVaultItem("Acme/github.com.gpg"), {
     kind: "template",
-    entry: "Acme/github.com__person@example.test",
+    entry: "Acme/github.com",
     name: "github.com",
     folder: "Acme",
-    username: "person@example.test",
+    label: undefined,
+    faviconUrl: "https://github.com",
+  });
+});
+
+test("parses template entries with labels after the domain", () => {
+  assert.deepEqual(toVaultItem("Acme/github.com/person@example.test.gpg"), {
+    kind: "template",
+    entry: "Acme/github.com/person@example.test",
+    name: "github.com",
+    folder: "Acme",
+    label: "person@example.test",
+    faviconUrl: "https://github.com",
+  });
+});
+
+test("keeps nested label paths after the domain", () => {
+  assert.deepEqual(toVaultItem("Work/github.com/accounts/admin.gpg"), {
+    kind: "template",
+    entry: "Work/github.com/accounts/admin",
+    name: "github.com",
+    folder: "Work",
+    label: "accounts/admin",
     faviconUrl: "https://github.com",
   });
 });
@@ -22,24 +44,32 @@ test("keeps pass-compatible entries as full path fallback", () => {
 });
 
 test("ignores invalid template domains", () => {
-  assert.deepEqual(toVaultItem("Personal/not-a-domain__person.gpg"), {
+  assert.deepEqual(toVaultItem("Personal/not-a-domain/person.gpg"), {
     kind: "pass",
-    entry: "Personal/not-a-domain__person",
-    name: "Personal/not-a-domain__person",
+    entry: "Personal/not-a-domain/person",
+    name: "Personal/not-a-domain/person",
   });
 });
 
 test("requires a folder for template entries", () => {
-  assert.deepEqual(toVaultItem("github.com__person@example.test.gpg"), {
+  assert.deepEqual(toVaultItem("github.com/person@example.test.gpg"), {
     kind: "pass",
-    entry: "github.com__person@example.test",
-    name: "github.com__person@example.test",
+    entry: "github.com/person@example.test",
+    name: "github.com/person@example.test",
+  });
+});
+
+test("does not search domains deeper than first subfolder", () => {
+  assert.deepEqual(toVaultItem("Work/clients/github.com/admin.gpg"), {
+    kind: "pass",
+    entry: "Work/clients/github.com/admin",
+    name: "Work/clients/github.com/admin",
   });
 });
 
 test("normalizes windows paths and strips gpg suffix", () => {
   assert.equal(
-    cleanEntryPath("Work\\example.com__user.gpg"),
-    "Work/example.com__user",
+    cleanEntryPath("Work\\example.com\\user.gpg"),
+    "Work/example.com/user",
   );
 });

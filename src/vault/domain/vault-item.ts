@@ -3,7 +3,7 @@ export interface TemplateVaultItem {
   entry: string;
   name: string;
   folder: string;
-  username: string;
+  label?: string;
   faviconUrl: string;
 }
 
@@ -16,7 +16,6 @@ export interface PassVaultItem {
 export type VaultItem = TemplateVaultItem | PassVaultItem;
 
 export const ALL_FOLDERS = "__all__";
-const TEMPLATE_SEPARATOR = "__";
 const DOMAIN_PATTERN =
   /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?)+$/i;
 
@@ -24,34 +23,30 @@ export function cleanEntryPath(entry: string): string {
   return entry.replace(/\\/g, "/").replace(/\.gpg$/i, "");
 }
 
-function parseTemplateName(name: string):
+function parseTemplatePath(parts: string[]):
   | {
+      folder: string;
       domain: string;
-      username: string;
+      label?: string;
     }
   | undefined {
-  const separatorIndex = name.indexOf(TEMPLATE_SEPARATOR);
-  if (separatorIndex <= 0) return undefined;
+  if (parts.length < 2) return undefined;
 
-  const domain = name.slice(0, separatorIndex).trim().toLowerCase();
-  const username = name
-    .slice(separatorIndex + TEMPLATE_SEPARATOR.length)
-    .trim();
+  const folder = parts[0]?.trim();
+  const domain = parts[1]?.trim().toLowerCase();
+  const label = parts.slice(2).join("/").trim() || undefined;
 
-  if (!domain || !username || !DOMAIN_PATTERN.test(domain)) return undefined;
+  if (!folder || !domain || !DOMAIN_PATTERN.test(domain)) return undefined;
 
-  return { domain, username };
+  return { folder, domain, label };
 }
 
 export function toVaultItem(entry: string): VaultItem {
   const cleanEntry = cleanEntryPath(entry);
   const parts = cleanEntry.split("/").filter(Boolean);
-  const fileName = parts.at(-1) ?? cleanEntry;
-  const folderParts = parts.slice(0, -1);
-  const template = parseTemplateName(fileName);
-  const folder = folderParts.join("/");
+  const template = parseTemplatePath(parts);
 
-  if (!template || !folder) {
+  if (!template) {
     return {
       kind: "pass",
       entry: cleanEntry,
@@ -63,8 +58,8 @@ export function toVaultItem(entry: string): VaultItem {
     kind: "template",
     entry: cleanEntry,
     name: template.domain,
-    username: template.username,
+    label: template.label,
     faviconUrl: `https://${template.domain}`,
-    folder,
+    folder: template.folder,
   };
 }

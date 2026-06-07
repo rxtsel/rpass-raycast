@@ -10,19 +10,27 @@ import {
 const items: VaultItem[] = [
   {
     kind: "template",
-    entry: "Acme/github.com__person@example.test",
+    entry: "Acme/github.com/person@example.test",
     name: "github.com",
     folder: "Acme",
-    username: "person@example.test",
+    label: "person@example.test",
     faviconUrl: "https://github.com",
   },
   {
     kind: "template",
-    entry: "Other/example.com__other",
+    entry: "Other/example.com/other",
     name: "example.com",
     folder: "Other",
-    username: "other",
+    label: "other",
     faviconUrl: "https://example.com",
+  },
+  {
+    kind: "template",
+    entry: "Acme/gitlab.com/team/admin",
+    name: "gitlab.com",
+    folder: "Acme",
+    label: "team/admin",
+    faviconUrl: "https://gitlab.com",
   },
   {
     kind: "pass",
@@ -31,7 +39,7 @@ const items: VaultItem[] = [
   },
 ];
 
-test("gets folders only from template items", () => {
+test("gets root folders only from template items", () => {
   assert.deepEqual(getVaultFolders(getTemplateVaultItems(items)), [
     "Acme",
     "Other",
@@ -43,5 +51,8 @@ test("keeps all items in the all filter", () => {
 });
 
 test("filters folder views to template items only", () => {
-  assert.deepEqual(filterVaultItemsByFolder(items, "Acme"), [items[0]]);
+  assert.deepEqual(filterVaultItemsByFolder(items, "Acme"), [
+    items[0],
+    items[2],
+  ]);
 });
