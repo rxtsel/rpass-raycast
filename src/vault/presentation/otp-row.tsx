@@ -8,7 +8,7 @@ import {
   Toast,
 } from "@raycast/api";
 import { getProgressIcon } from "@raycast/utils";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   generateOtp,
   type OtpResult,
@@ -28,52 +28,71 @@ function urgencyColor(remaining: number, period: number): Color {
   return Color.Red;
 }
 
-function formatCountdown(seconds: number): string {
-  return `${seconds.toString().padStart(2, "0")}s`;
+function getRemainingSeconds(expiresAt: number): number {
+  return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+}
+
+function countdownProgress(remaining: number, period: number): number {
+  return Math.min(1, Math.max(0, remaining / period));
 }
 
 export default function OtpRow({ entry, storepath, passphrase }: Props) {
   const [result, setResult] = useState<OtpResult | null>(null);
   const [remaining, setRemaining] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const isRefreshingRef = useRef(false);
+  const requestIdRef = useRef(0);
 
-  async function fetchOtp() {
+  const fetchOtp = useCallback(async () => {
+    if (isRefreshingRef.current) return;
+
+    const requestId = ++requestIdRef.current;
+    isRefreshingRef.current = true;
     try {
       const data = await generateOtp(entry, storepath, passphrase);
+      if (requestId !== requestIdRef.current) return;
+
       setResult(data);
       setRemaining(data.remaining_seconds);
+      setExpiresAt(Date.now() + data.remaining_seconds * 1000);
     } catch {
-      showToast(Toast.Style.Failure, "Failed to generate TOTP");
+      if (requestId === requestIdRef.current) {
+        showToast(Toast.Style.Failure, "Failed to generate TOTP");
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        isRefreshingRef.current = false;
+      }
     }
-  }
+  }, [entry, passphrase, storepath]);
 
   useEffect(() => {
+    requestIdRef.current += 1;
+    isRefreshingRef.current = false;
+    setResult(null);
+    setRemaining(0);
+    setExpiresAt(null);
     fetchOtp();
-  }, [entry, passphrase]);
+  }, [fetchOtp]);
 
   useEffect(() => {
-    if (!result) return;
+    if (!expiresAt) return;
 
-    intervalRef.current = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          fetchOtp();
-          return result.period;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+    const updateCountdown = () => {
+      const nextRemaining = getRemainingSeconds(expiresAt);
+      setRemaining(nextRemaining);
+      if (nextRemaining === 0) fetchOtp();
     };
-  }, [result]);
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt, fetchOtp]);
 
   const code = result?.code ?? "------";
   const period = result?.period ?? 30;
   const color = urgencyColor(remaining, period);
-  const progress = remaining / period;
-  const countdown = formatCountdown(remaining);
+  const progress = countdownProgress(remaining, period);
 
   return (
     <List.Item
@@ -85,7 +104,6 @@ export default function OtpRow({ entry, storepath, passphrase }: Props) {
         },
         {
           icon: getProgressIcon(progress, color),
-          tooltip: `Refreshes in ${countdown}`,
         },
       ]}
       actions={

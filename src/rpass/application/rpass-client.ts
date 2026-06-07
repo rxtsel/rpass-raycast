@@ -60,6 +60,12 @@ async function run(args: string[], stdin?: string): Promise<string> {
       reject(new RpassError("rpass_timeout", "rpass timed out"));
     }, 10000);
 
+    if (!child.stdout || !child.stderr) {
+      clearTimeout(timeout);
+      reject(new RpassError("rpass_spawn_failed", "rpass stdio unavailable"));
+      return;
+    }
+
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8");
@@ -83,7 +89,7 @@ async function run(args: string[], stdin?: string): Promise<string> {
       }
     });
 
-    if (stdin !== undefined) {
+    if (stdin !== undefined && child.stdin) {
       child.stdin.on("error", () => {
         // GPG may exit before reading stdin when decryption fails.
       });
@@ -97,28 +103,47 @@ export async function listEntries(storeDir: string): Promise<string[]> {
   return JSON.parse(stdout) as string[];
 }
 
+interface ShowEntryJson {
+  password: string;
+  fields: { name: string; value: string }[];
+  otp_uri?: string;
+  extra_lines: string[];
+}
+
+function parseJson<T>(stdout: string): T {
+  try {
+    return JSON.parse(stdout) as T;
+  } catch (error) {
+    throw new RpassError(
+      "rpass_invalid_json",
+      "rpass returned invalid JSON",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+function formatShowEntryOutput(entry: ShowEntryJson): string {
+  return [
+    entry.password,
+    ...entry.fields.map((field) => `${field.name}: ${field.value}`),
+    entry.otp_uri,
+    ...entry.extra_lines,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function showEntry(
   entry: string,
   storeDir: string,
   passphrase?: string,
 ): Promise<string> {
-  const args = ["--store-dir", storeDir, "show", entry, "--json"];
+  const args = ["--store-dir", storeDir, "show", "--json"];
   if (passphrase !== undefined) args.push("--passphrase-stdin");
+  args.push(entry);
+
   const stdout = await run(args, passphrase);
-  const parsed = JSON.parse(stdout) as {
-    password: string;
-    fields: { name: string; value: string }[];
-    otp_uri?: string;
-    extra_lines: string[];
-  };
-  return [
-    parsed.password,
-    ...parsed.fields.map((field) => `${field.name}: ${field.value}`),
-    ...(parsed.otp_uri ? [parsed.otp_uri] : []),
-    ...parsed.extra_lines,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return formatShowEntryOutput(parseJson<ShowEntryJson>(stdout));
 }
 
 export async function generateOtp(
@@ -126,10 +151,11 @@ export async function generateOtp(
   storeDir: string,
   passphrase?: string,
 ): Promise<OtpResult> {
-  const args = ["--store-dir", storeDir, "otp", entry, "--json"];
+  const args = ["--store-dir", storeDir, "otp", "--json"];
   if (passphrase !== undefined) args.push("--passphrase-stdin");
+  args.push(entry);
   const stdout = await run(args, passphrase);
-  return JSON.parse(stdout) as OtpResult;
+  return parseJson<OtpResult>(stdout);
 }
 
 export async function version(): Promise<void> {
