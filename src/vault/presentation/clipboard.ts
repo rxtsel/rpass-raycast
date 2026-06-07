@@ -1,4 +1,4 @@
-import { Clipboard, getPreferenceValues } from "@raycast/api";
+import { Clipboard, getPreferenceValues, showHUD } from "@raycast/api";
 
 interface Preferences {
   clipboardTimeout: string;
@@ -25,9 +25,11 @@ function scheduleClear(content: string): void {
 export async function copyPassword(content: string): Promise<void> {
   await Clipboard.copy(content, { concealed: true });
   scheduleClear(content);
+  await showHUD("Copied to Clipboard", { clearRootSearch: true });
 }
 
 export async function pastePassword(content: string): Promise<void> {
   await Clipboard.paste(content);
   scheduleClear(content);
+  await showHUD("Pasted in Active App", { clearRootSearch: true });
 }
