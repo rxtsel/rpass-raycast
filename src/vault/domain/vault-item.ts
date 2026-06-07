@@ -14,31 +14,43 @@ export function cleanEntryPath(entry: string): string {
   return entry.replace(/\\/g, "/").replace(/\.gpg$/i, "");
 }
 
+function toPathParts(entry: string): string[] {
+  return entry
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function joinPathParts(parts: string[]): string | undefined {
+  return parts.join("/").trim() || undefined;
+}
+
 function isDomain(value: string | undefined): value is string {
   return Boolean(value && DOMAIN_PATTERN.test(value));
 }
 
 export function toVaultItem(entry: string): VaultItem {
   const cleanEntry = cleanEntryPath(entry);
-  const parts = cleanEntry.split("/").filter(Boolean);
+  const parts = toPathParts(cleanEntry);
   const folder = parts.length > 1 ? parts[0] : undefined;
-  const secondPathPart = parts[1]?.trim();
+  const namePart = parts[1];
+  const remainingParts = parts.slice(2);
 
-  if (folder && isDomain(secondPathPart)) {
-    const domain = secondPathPart.toLowerCase();
+  if (folder && isDomain(namePart)) {
+    const domain = namePart.toLowerCase();
 
     return {
       entry: cleanEntry,
       name: domain,
       folder,
-      label: parts.slice(2).join("/").trim() || undefined,
+      label: joinPathParts(remainingParts),
       faviconUrl: `https://${domain}`,
     };
   }
 
   return {
     entry: cleanEntry,
-    name: folder ? parts.slice(1).join("/") : cleanEntry,
+    name: joinPathParts(parts.slice(1)) ?? cleanEntry,
     folder,
   };
 }
