@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cleanEntryPath, toVaultItem } from "./vault-item";
 
-test("parses domain-only template entries", () => {
+test("uses favicon metadata when second path part is a domain", () => {
   assert.deepEqual(toVaultItem("Acme/github.com.gpg"), {
-    kind: "template",
     entry: "Acme/github.com",
     name: "github.com",
     folder: "Acme",
@@ -13,9 +12,8 @@ test("parses domain-only template entries", () => {
   });
 });
 
-test("parses template entries with labels after the domain", () => {
+test("uses path after domain as label", () => {
   assert.deepEqual(toVaultItem("Acme/github.com/person@example.test.gpg"), {
-    kind: "template",
     entry: "Acme/github.com/person@example.test",
     name: "github.com",
     folder: "Acme",
@@ -26,7 +24,6 @@ test("parses template entries with labels after the domain", () => {
 
 test("keeps nested label paths after the domain", () => {
   assert.deepEqual(toVaultItem("Work/github.com/accounts/admin.gpg"), {
-    kind: "template",
     entry: "Work/github.com/accounts/admin",
     name: "github.com",
     folder: "Work",
@@ -35,35 +32,43 @@ test("keeps nested label paths after the domain", () => {
   });
 });
 
-test("keeps pass-compatible entries as full path fallback", () => {
+test("uses lock fallback metadata when second path part is not a domain", () => {
   assert.deepEqual(toVaultItem("personal/social/example-login.gpg"), {
-    kind: "pass",
     entry: "personal/social/example-login",
-    name: "personal/social/example-login",
+    name: "social/example-login",
+    folder: "personal",
   });
 });
 
-test("ignores invalid template domains", () => {
+test("keeps single entries without folder", () => {
+  assert.deepEqual(toVaultItem("example-login.gpg"), {
+    entry: "example-login",
+    name: "example-login",
+    folder: undefined,
+  });
+});
+
+test("keeps invalid domains as lock fallback metadata", () => {
   assert.deepEqual(toVaultItem("Personal/not-a-domain/person.gpg"), {
-    kind: "pass",
     entry: "Personal/not-a-domain/person",
-    name: "Personal/not-a-domain/person",
+    name: "not-a-domain/person",
+    folder: "Personal",
   });
 });
 
-test("requires a folder for template entries", () => {
+test("does not treat root domain as favicon metadata", () => {
   assert.deepEqual(toVaultItem("github.com/person@example.test.gpg"), {
-    kind: "pass",
     entry: "github.com/person@example.test",
-    name: "github.com/person@example.test",
+    name: "person@example.test",
+    folder: "github.com",
   });
 });
 
-test("does not search domains deeper than first subfolder", () => {
+test("does not search domains deeper than second path part", () => {
   assert.deepEqual(toVaultItem("Work/clients/github.com/admin.gpg"), {
-    kind: "pass",
     entry: "Work/clients/github.com/admin",
-    name: "Work/clients/github.com/admin",
+    name: "clients/github.com/admin",
+    folder: "Work",
   });
 });
 

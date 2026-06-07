@@ -3,13 +3,11 @@ import test from "node:test";
 import { ALL_FOLDERS, type VaultItem } from "../domain/vault-item";
 import {
   filterVaultItemsByFolder,
-  getTemplateVaultItems,
   getVaultFolders,
 } from "./filter-vault-items";
 
 const items: VaultItem[] = [
   {
-    kind: "template",
     entry: "Acme/github.com/person@example.test",
     name: "github.com",
     folder: "Acme",
@@ -17,7 +15,6 @@ const items: VaultItem[] = [
     faviconUrl: "https://github.com",
   },
   {
-    kind: "template",
     entry: "Other/example.com/other",
     name: "example.com",
     folder: "Other",
@@ -25,7 +22,6 @@ const items: VaultItem[] = [
     faviconUrl: "https://example.com",
   },
   {
-    kind: "template",
     entry: "Acme/gitlab.com/team/admin",
     name: "gitlab.com",
     folder: "Acme",
@@ -33,26 +29,29 @@ const items: VaultItem[] = [
     faviconUrl: "https://gitlab.com",
   },
   {
-    kind: "pass",
-    entry: "personal/social/example-login",
-    name: "personal/social/example-login",
+    entry: "Notes/pw",
+    name: "pw",
+    folder: "Notes",
+  },
+  {
+    entry: "example-login",
+    name: "example-login",
+    folder: undefined,
   },
 ];
 
-test("gets root folders only from template items", () => {
-  assert.deepEqual(getVaultFolders(getTemplateVaultItems(items)), [
-    "Acme",
-    "Other",
-  ]);
+test("gets root folders from every item with a folder", () => {
+  assert.deepEqual(getVaultFolders(items), ["Acme", "Notes", "Other"]);
 });
 
 test("keeps all items in the all filter", () => {
   assert.deepEqual(filterVaultItemsByFolder(items, ALL_FOLDERS), items);
 });
 
-test("filters folder views to template items only", () => {
+test("filters folder views across favicon and lock fallback items", () => {
   assert.deepEqual(filterVaultItemsByFolder(items, "Acme"), [
     items[0],
     items[2],
   ]);
+  assert.deepEqual(filterVaultItemsByFolder(items, "Notes"), [items[3]]);
 });
