@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { getPreferenceValues } from "@raycast/api";
+import type { getPreferenceValues as getPreferenceValuesType } from "@raycast/api";
 
 interface Preferences {
   rpassExecutablePath?: string;
@@ -12,9 +12,20 @@ interface OtpResult {
   period: number;
 }
 
-function resolveExecutable(): string {
+let executablePathOverride: string | undefined;
+
+async function resolveExecutable(): Promise<string> {
+  if (executablePathOverride !== undefined) return executablePathOverride;
+
+  const { getPreferenceValues } = (await import("@raycast/api")) as {
+    getPreferenceValues: typeof getPreferenceValuesType;
+  };
   const { rpassExecutablePath } = getPreferenceValues<Preferences>();
   return rpassExecutablePath?.trim() || "rpass";
+}
+
+export function setRpassExecutablePathForTests(path: string | undefined): void {
+  executablePathOverride = path;
 }
 
 export class RpassError extends Error {
@@ -51,8 +62,10 @@ function parseRpassError(stderr: string, code: number | null): RpassError {
 }
 
 async function run(args: string[], stdin?: string): Promise<string> {
+  const executable = await resolveExecutable();
+
   return new Promise((resolve, reject) => {
-    const child = spawn(resolveExecutable(), args, {
+    const child = spawn(executable, args, {
       stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
     const timeout = setTimeout(() => {
@@ -100,7 +113,7 @@ async function run(args: string[], stdin?: string): Promise<string> {
 
 export async function listEntries(storeDir: string): Promise<string[]> {
   const stdout = await run(["--store-dir", storeDir, "list", "--json"]);
-  return JSON.parse(stdout) as string[];
+  return parseJson<string[]>(stdout);
 }
 
 interface ShowEntryJson {
