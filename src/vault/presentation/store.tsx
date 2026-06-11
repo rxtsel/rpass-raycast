@@ -1,7 +1,7 @@
 import { Action, ActionPanel, Icon, List } from "@raycast/api";
 import { getFavicon } from "@raycast/utils";
-import { useEffect, useMemo, useState } from "react";
-import { listEntries } from "../../rpass/application/rpass-client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { listEntries, RpassError } from "../../rpass/application/rpass-client";
 import {
   filterVaultItemsByFolder,
   getVaultFolders,
@@ -32,7 +32,20 @@ interface FolderFilterProps {
   onChange(folder: string): void;
 }
 
-function FolderFilter({ folders, selectedFolder, onChange }: FolderFilterProps) {
+function formatError(error: unknown): string {
+  if (error instanceof RpassError) {
+    return `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`;
+  }
+
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function FolderFilter({
+  folders,
+  selectedFolder,
+  onChange,
+}: FolderFilterProps) {
   if (folders.length === 0) return null;
 
   return (
@@ -57,20 +70,52 @@ function FolderFilter({ folders, selectedFolder, onChange }: FolderFilterProps) 
 export default function Store({ storepath }: Props) {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [selectedFolder, setSelectedFolder] = useState(ALL_FOLDERS);
+  const [lastError, setLastError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadVaultItems(storepath, { listEntries })
-      .then(setItems)
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    setLastError(undefined);
+    try {
+      setItems(await loadVaultItems(storepath, { listEntries }));
+    } catch (error) {
+      setLastError(formatError(error));
+    } finally {
+      setIsLoading(false);
+    }
   }, [storepath]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const folders = useMemo(() => getVaultFolders(items), [items]);
   const filteredItems = useMemo(
     () => filterVaultItemsByFolder(items, selectedFolder),
     [items, selectedFolder],
   );
+
+  if (lastError) {
+    return (
+      <List isLoading={isLoading}>
+        <List.Item
+          icon={Icon.ExclamationMark}
+          title="Failed to Load Vault"
+          subtitle={lastError}
+          actions={
+            <ActionPanel>
+              <Action.CopyToClipboard title="Copy Error" content={lastError} />
+              <Action
+                title="Retry"
+                icon={Icon.ArrowClockwise}
+                onAction={load}
+              />
+            </ActionPanel>
+          }
+        />
+      </List>
+    );
+  }
 
   return (
     <List
