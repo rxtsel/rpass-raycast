@@ -14,6 +14,7 @@ export function parseVaultEntryRows(content: string): VaultEntryRow[] {
       if (TOTP_PATTERN.test(line)) return { idx, name: "otpauth", value: line };
       if (idx === 0) return { idx, name: "pass", value: line };
       const [name, value] = line.split(/:\s?(.*)/, 2);
+      if (value === undefined) return { idx, name: "note", value: line };
       return { idx, name, value };
     });
 }
