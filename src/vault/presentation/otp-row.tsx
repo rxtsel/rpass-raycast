@@ -89,7 +89,8 @@ export default function OtpRow({ entry, storepath, passphrase }: Props) {
     return () => clearInterval(interval);
   }, [expiresAt, fetchOtp]);
 
-  const code = result?.code ?? "------";
+  const totpCode = result?.code;
+  const displayCode = totpCode ?? "------";
   const period = result?.period ?? 30;
   const color = urgencyColor(remaining, period);
   const progress = countdownProgress(remaining, period);
@@ -100,7 +101,7 @@ export default function OtpRow({ entry, storepath, passphrase }: Props) {
       title="TOTP"
       accessories={[
         {
-          text: { value: code, color: Color.PrimaryText },
+          text: { value: displayCode, color: Color.PrimaryText },
         },
         {
           icon: getProgressIcon(progress, color),
@@ -108,14 +109,18 @@ export default function OtpRow({ entry, storepath, passphrase }: Props) {
       ]}
       actions={
         <ActionPanel>
-          <Action
-            title="Copy TOTP to Clipboard"
-            onAction={() => copyPassword(code)}
-          />
-          <Action
-            title="Paste TOTP in Active App"
-            onAction={() => pastePassword(code)}
-          />
+          {totpCode ? (
+            <>
+              <Action
+                title="Copy TOTP to Clipboard"
+                onAction={() => copyPassword(totpCode)}
+              />
+              <Action
+                title="Paste TOTP in Active App"
+                onAction={() => pastePassword(totpCode)}
+              />
+            </>
+          ) : null}
           <Action
             title="Refresh TOTP"
             icon={Icon.RotateClockwise}

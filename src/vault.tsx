@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getPreferenceValues } from "@raycast/api";
+import { useEffect } from "react";
 import checkInstall from "./vault/presentation/check-install";
 import Store from "./vault/presentation/store";
 
@@ -13,7 +14,9 @@ export default function Command() {
   const storepath =
     passwordStoreDir?.trim() || join(homedir(), ".password-store");
 
-  checkInstall();
+  useEffect(() => {
+    checkInstall();
+  }, []);
 
   return <Store storepath={storepath} />;
 }
