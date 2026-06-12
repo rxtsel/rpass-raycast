@@ -1,0 +1,393 @@
+import {
+  Action,
+  ActionPanel,
+  Alert,
+  confirmAlert,
+  Form,
+  Icon,
+  popToRoot,
+  showToast,
+  Toast,
+} from "@raycast/api";
+import { useEffect, useRef, useState } from "react";
+import {
+  generateSecret,
+  RpassError,
+  showEntryContent,
+  writeEntry,
+} from "../../rpass/application/rpass-client";
+
+const DEFAULT_PASSWORD_LENGTH = "14";
+const DEFAULT_WORDS = "4";
+
+type SecretKind = "password" | "phrase";
+
+interface Props {
+  storepath: string;
+  entry: string;
+  passphrase?: string;
+}
+
+interface FormErrors {
+  password?: string;
+  length?: string;
+  words?: string;
+  passphrase?: string;
+}
+
+interface PassphraseValues {
+  passphrase: string;
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof RpassError) {
+    return `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`;
+  }
+
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function parsePositiveInteger(value: string): number | undefined {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return undefined;
+  return parsed;
+}
+
+function inferSecretKind(password: string): SecretKind {
+  const parts = password.split(/[-_\s]+/).filter(Boolean);
+  if (parts.length < 3) return "password";
+
+  const wordParts = parts.filter((part) => /^[a-z]+$/i.test(part));
+  const numericParts = parts.filter((part) => /^\d+$/.test(part));
+  return wordParts.length >= 3 &&
+    wordParts.length + numericParts.length === parts.length
+    ? "phrase"
+    : "password";
+}
+
+export default function EditEntry({ storepath, entry, passphrase }: Props) {
+  const [password, setPassword] = useState("");
+  const [additionalLines, setAdditionalLines] = useState("");
+  const [kind, setKind] = useState<SecretKind>("password");
+  const [length, setLength] = useState(DEFAULT_PASSWORD_LENGTH);
+  const [words, setWords] = useState(DEFAULT_WORDS);
+  const [isLoading, setIsLoading] = useState(true);
+  const [needsPassphrase, setNeedsPassphrase] = useState(false);
+  const [unlockPassphrase, setUnlockPassphrase] = useState<string>();
+  const [passphraseInput, setPassphraseInput] = useState("");
+  const [passphraseVisible, setPassphraseVisible] = useState(false);
+  const [lastError, setLastError] = useState<string>();
+  const [errors, setErrors] = useState<FormErrors>({});
+  const didMountOptionsRef = useRef(false);
+  const skipNextOptionsRegenerateRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      setLastError(undefined);
+      try {
+        const content = await showEntryContent(
+          entry,
+          storepath,
+          unlockPassphrase ?? passphrase,
+        );
+        if (cancelled) return;
+
+        setPassword(content.password);
+        skipNextOptionsRegenerateRef.current = true;
+        setKind(inferSecretKind(content.password));
+        setNeedsPassphrase(false);
+        setLastError(undefined);
+        setAdditionalLines(
+          [
+            ...content.fields.map((field) => `${field.name}: ${field.value}`),
+            content.otp_uri,
+            ...content.extra_lines,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      } catch (error) {
+        if (!cancelled) {
+          if (
+            error instanceof RpassError &&
+            error.code === "gpg_passphrase_required"
+          ) {
+            setNeedsPassphrase(true);
+          } else {
+            const message = formatError(error);
+            setLastError(message);
+            await showToast(
+              Toast.Style.Failure,
+              "Failed to Load Entry",
+              message,
+            );
+          }
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [entry, passphrase, storepath, unlockPassphrase]);
+
+  function validateSecretOptions(): boolean {
+    const nextErrors: FormErrors = {};
+
+    if (kind === "password") {
+      const parsedLength = parsePositiveInteger(length);
+      if (parsedLength === undefined || parsedLength > 1024) {
+        nextErrors.length = "Password length must be between 1 and 1024";
+      }
+    } else {
+      const parsedWords = parsePositiveInteger(words);
+      if (parsedWords === undefined || parsedWords > 20) {
+        nextErrors.words = "Word count must be between 1 and 20";
+      }
+    }
+
+    setErrors(nextErrors);
+    return Object.values(nextErrors).every((error) => error === undefined);
+  }
+
+  function validate(): boolean {
+    const nextErrors: FormErrors = {};
+    if (!password) nextErrors.password = "Password is required";
+    setErrors(nextErrors);
+    return Object.values(nextErrors).every((error) => error === undefined);
+  }
+
+  function validatePassphrase(value: string): boolean {
+    if (!value) {
+      setErrors((current) => ({
+        ...current,
+        passphrase: "Passphrase is required",
+      }));
+      return false;
+    }
+
+    setErrors((current) => ({ ...current, passphrase: undefined }));
+    return true;
+  }
+
+  function unlock(values: PassphraseValues) {
+    if (!validatePassphrase(values.passphrase)) return;
+    setUnlockPassphrase(values.passphrase);
+    setNeedsPassphrase(false);
+  }
+
+  async function regenerateSecret() {
+    if (!validateSecretOptions()) return;
+
+    setIsLoading(true);
+    setLastError(undefined);
+    try {
+      const result = await generateSecret(
+        kind === "phrase"
+          ? { kind: "phrase", words: Number(words) }
+          : { kind: "password", length: Number(length) },
+      );
+      setPassword(result.password);
+    } catch (error) {
+      const message = formatError(error);
+      setLastError(message);
+      await showToast(
+        Toast.Style.Failure,
+        "Failed to Generate Secret",
+        message,
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!didMountOptionsRef.current) {
+      didMountOptionsRef.current = true;
+      return;
+    }
+
+    if (skipNextOptionsRegenerateRef.current) {
+      skipNextOptionsRegenerateRef.current = false;
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      regenerateSecret();
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [kind, length, words]);
+
+  async function save() {
+    if (!validate()) return;
+
+    const confirmed = await confirmAlert({
+      title: "Update Entry?",
+      message: `Overwrite '${entry}' with the edited content?`,
+      primaryAction: {
+        title: "Update Entry",
+        style: Alert.ActionStyle.Destructive,
+      },
+      dismissAction: {
+        title: "Cancel",
+      },
+    });
+
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    setLastError(undefined);
+    try {
+      const content = [password, additionalLines.trim()]
+        .filter(Boolean)
+        .join("\n");
+      await writeEntry(entry, storepath, content, { force: true });
+      await showToast(Toast.Style.Success, "Entry Updated", entry);
+      await popToRoot({ clearSearchBar: true });
+    } catch (error) {
+      const message = formatError(error);
+      setLastError(message);
+      await showToast(Toast.Style.Failure, "Failed to Update Entry", message);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  if (needsPassphrase) {
+    return (
+      <Form
+        isLoading={isLoading}
+        actions={
+          <ActionPanel>
+            <Action.SubmitForm title="Unlock Entry" onSubmit={unlock} />
+            <Action
+              icon={passphraseVisible ? Icon.EyeDisabled : Icon.Eye}
+              title={passphraseVisible ? "Hide Passphrase" : "Show Passphrase"}
+              shortcut={{ modifiers: ["opt"], key: "e" }}
+              onAction={() => setPassphraseVisible((visible) => !visible)}
+            />
+          </ActionPanel>
+        }
+      >
+        {passphraseVisible ? (
+          <Form.TextField
+            id="passphrase"
+            title="GPG Passphrase"
+            placeholder="Enter GPG passphrase"
+            value={passphraseInput}
+            error={errors.passphrase}
+            onChange={(value) => {
+              setPassphraseInput(value);
+              if (errors.passphrase)
+                setErrors((current) => ({ ...current, passphrase: undefined }));
+            }}
+            onBlur={(event) => validatePassphrase(event.target.value ?? "")}
+          />
+        ) : (
+          <Form.PasswordField
+            id="passphrase"
+            title="GPG Passphrase"
+            placeholder="Enter GPG passphrase"
+            value={passphraseInput}
+            error={errors.passphrase}
+            onChange={(value) => {
+              setPassphraseInput(value);
+              if (errors.passphrase)
+                setErrors((current) => ({ ...current, passphrase: undefined }));
+            }}
+            onBlur={(event) => validatePassphrase(event.target.value ?? "")}
+          />
+        )}
+      </Form>
+    );
+  }
+
+  return (
+    <Form
+      isLoading={isLoading}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            icon={Icon.CheckCircle}
+            title="Update Entry"
+            onSubmit={save}
+          />
+          <Action
+            icon={Icon.ArrowClockwise}
+            title="Regenerate Secret"
+            shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+            onAction={regenerateSecret}
+          />
+          {lastError ? (
+            <Action.CopyToClipboard
+              title="Copy Last Error"
+              content={lastError}
+            />
+          ) : null}
+        </ActionPanel>
+      }
+    >
+      <Form.Description text={`Entry path: ${entry}`} />
+      <Form.TextField
+        id="password"
+        title="Password"
+        value={password}
+        error={errors.password}
+        onChange={(value) => {
+          setPassword(value);
+          if (errors.password)
+            setErrors((current) => ({ ...current, password: undefined }));
+        }}
+      />
+      <Form.TextArea
+        id="additionalLines"
+        title="Additional Lines"
+        value={additionalLines}
+        onChange={setAdditionalLines}
+      />
+      <Form.Separator />
+      <Form.Dropdown
+        id="kind"
+        title="Regenerate Type"
+        value={kind}
+        onChange={(value) => setKind(value as SecretKind)}
+      >
+        <Form.Dropdown.Item value="password" title="Password" />
+        <Form.Dropdown.Item value="phrase" title="Passphrase" />
+      </Form.Dropdown>
+      {kind === "password" ? (
+        <Form.TextField
+          id="length"
+          title="Length"
+          value={length}
+          error={errors.length}
+          onChange={(value) => {
+            setLength(value);
+            if (errors.length)
+              setErrors((current) => ({ ...current, length: undefined }));
+          }}
+        />
+      ) : (
+        <Form.TextField
+          id="words"
+          title="Words"
+          value={words}
+          error={errors.words}
+          onChange={(value) => {
+            setWords(value);
+            if (errors.words)
+              setErrors((current) => ({ ...current, words: undefined }));
+          }}
+        />
+      )}
+    </Form>
+  );
+}

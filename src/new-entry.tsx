@@ -1,17 +1,22 @@
 import {
   Action,
   ActionPanel,
+  Alert,
+  confirmAlert,
   Form,
   Icon,
+  popToRoot,
   showToast,
   Toast,
 } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import { configureRpassClientFromPreferences } from "./rpass/application/configure-rpass-client";
 import {
-  generateEntry,
+  generateSecret,
   listEntries,
   RpassError,
+  writeEntry,
+  type GenerateEntryOptions,
 } from "./rpass/application/rpass-client";
 import { getEntryParentFolders } from "./vault/domain/entry-folders";
 import { resolveStorePath } from "./vault/application/store-path";
@@ -97,6 +102,7 @@ export default function Command() {
   const [words, setWords] = useState(DEFAULT_WORDS);
   const [capitalize, setCapitalize] = useState(false);
   const [appendNumber, setAppendNumber] = useState(false);
+  const [generatedSecret, setGeneratedSecret] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [lastError, setLastError] = useState<string>();
   const [errors, setErrors] = useState<FormErrors>({});
@@ -129,6 +135,49 @@ export default function Command() {
     };
   }, [storepath]);
 
+  function generateOptions(force = false): GenerateEntryOptions {
+    return kind === "phrase"
+      ? {
+          kind: "phrase",
+          words: Number(words),
+          capitalize,
+          number: appendNumber,
+          force,
+        }
+      : {
+          kind: "password",
+          length: Number(length),
+          lowercase,
+          uppercase,
+          numbers,
+          symbols,
+          force,
+        };
+  }
+
+  async function regenerateSecret(): Promise<string | undefined> {
+    if (!validateSecretOptions()) return undefined;
+
+    setIsLoading(true);
+    setLastError(undefined);
+    try {
+      const result = await generateSecret(generateOptions());
+      setGeneratedSecret(result.password);
+      return result.password;
+    } catch (error) {
+      const message = formatError(error);
+      setLastError(message);
+      await showToast(
+        Toast.Style.Failure,
+        "Failed to Generate Secret",
+        message,
+      );
+      return undefined;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   function resetForm(): void {
     setSelectedFolder("");
     setEntryName("");
@@ -141,7 +190,32 @@ export default function Command() {
     setWords(DEFAULT_WORDS);
     setCapitalize(false);
     setAppendNumber(false);
+    setGeneratedSecret("");
     setErrors({});
+  }
+
+  function validateSecretOptions(): boolean {
+    const nextErrors: FormErrors = { name: errors.name };
+
+    if (kind === "password") {
+      const parsedLength = parsePositiveInteger(length);
+      if (parsedLength === undefined || parsedLength > 1024) {
+        nextErrors.length = "Password length must be between 1 and 1024";
+      }
+      if (!lowercase && !uppercase && !numbers && !symbols) {
+        nextErrors.characterSet = "Enable at least one character set";
+      }
+    } else {
+      const parsedWords = parsePositiveInteger(words);
+      if (parsedWords === undefined || parsedWords > 20) {
+        nextErrors.words = "Word count must be between 1 and 20";
+      }
+    }
+
+    setErrors(nextErrors);
+    return Object.entries(nextErrors)
+      .filter(([key]) => key !== "name")
+      .every(([, error]) => error === undefined);
   }
 
   function validate(): boolean {
@@ -170,33 +244,32 @@ export default function Command() {
   async function submit({ force = false }: { force?: boolean } = {}) {
     if (!validate()) return;
 
+    const secret = generatedSecret || (await regenerateSecret());
+    if (!secret) return;
+
+    const confirmed = await confirmAlert({
+      title: force ? "Overwrite Entry?" : "Create Entry?",
+      message: `${force ? "Overwrite" : "Create"} '${entry}' in the password store?`,
+      primaryAction: {
+        title: force ? "Overwrite Entry" : "Create Entry",
+        style: force
+          ? Alert.ActionStyle.Destructive
+          : Alert.ActionStyle.Default,
+      },
+      dismissAction: {
+        title: "Cancel",
+      },
+    });
+
+    if (!confirmed) return;
+
     setIsLoading(true);
     setLastError(undefined);
     try {
-      const result = await generateEntry(
-        entry,
-        storepath,
-        kind === "phrase"
-          ? {
-              kind: "phrase",
-              words: Number(words),
-              capitalize,
-              number: appendNumber,
-              force,
-            }
-          : {
-              kind: "password",
-              length: Number(length),
-              lowercase,
-              uppercase,
-              numbers,
-              symbols,
-              force,
-            },
-      );
-
+      await writeEntry(entry, storepath, secret, { force });
       resetForm();
-      await copyPassword(result.password);
+      await copyPassword(secret);
+      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
@@ -211,6 +284,24 @@ export default function Command() {
     if (errors.name) setErrors((current) => ({ ...current, name: undefined }));
   }
 
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      regenerateSecret();
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [
+    kind,
+    length,
+    lowercase,
+    uppercase,
+    numbers,
+    symbols,
+    words,
+    capitalize,
+    appendNumber,
+  ]);
+
   return (
     <Form
       isLoading={isLoading}
@@ -220,6 +311,12 @@ export default function Command() {
             icon={Icon.Plus}
             title="Create and Copy Secret"
             onSubmit={() => submit()}
+          />
+          <Action
+            icon={Icon.ArrowClockwise}
+            title="Regenerate Secret"
+            shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
+            onAction={regenerateSecret}
           />
           <Action.SubmitForm
             icon={Icon.ExclamationMark}
@@ -274,6 +371,12 @@ export default function Command() {
       />
 
       <Form.Description text={`Entry path: ${entry || "—"}`} />
+      <Form.TextField
+        id="generatedSecret"
+        title="Generated Secret"
+        value={generatedSecret}
+        onChange={setGeneratedSecret}
+      />
       <Form.Separator />
 
       {kind === "password" ? (

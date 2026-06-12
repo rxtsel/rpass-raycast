@@ -8,7 +8,13 @@ import {
   Toast,
 } from "@raycast/api";
 import { getProgressIcon } from "@raycast/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   generateOtp,
   type OtpResult,
@@ -19,6 +25,7 @@ interface Props {
   entry: string;
   storepath: string;
   passphrase?: string;
+  editTarget: ReactNode;
 }
 
 function urgencyColor(remaining: number, period: number): Color {
@@ -36,7 +43,12 @@ function countdownProgress(remaining: number, period: number): number {
   return Math.min(1, Math.max(0, remaining / period));
 }
 
-export default function OtpRow({ entry, storepath, passphrase }: Props) {
+export default function OtpRow({
+  entry,
+  storepath,
+  passphrase,
+  editTarget,
+}: Props) {
   const [result, setResult] = useState<OtpResult | null>(null);
   const [remaining, setRemaining] = useState(0);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
@@ -125,6 +137,11 @@ export default function OtpRow({ entry, storepath, passphrase }: Props) {
             title="Refresh TOTP"
             icon={Icon.RotateClockwise}
             onAction={fetchOtp}
+          />
+          <Action.Push
+            icon={Icon.Pencil}
+            title="Edit Entry"
+            target={editTarget}
           />
         </ActionPanel>
       }

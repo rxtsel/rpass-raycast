@@ -12,6 +12,16 @@ interface GenerateEntryResult {
   password: string;
 }
 
+interface GenerateSecretResult {
+  name?: string;
+  password: string;
+  dry_run: boolean;
+}
+
+interface WriteEntryResult {
+  name: string;
+}
+
 interface RemoveEntryResult {
   name: string;
 }
@@ -170,17 +180,27 @@ function formatShowEntryOutput(entry: ShowEntryJson): string {
     .join("\n");
 }
 
-export async function showEntry(
+export async function showEntryContent(
   entry: string,
   storeDir: string,
   passphrase?: string,
-): Promise<string> {
+): Promise<ShowEntryJson> {
   const args = ["--store-dir", storeDir, "show", "--json"];
   if (passphrase !== undefined) args.push("--passphrase-stdin");
   args.push(entry);
 
   const stdout = await run(args, passphrase);
-  return formatShowEntryOutput(parseJson<ShowEntryJson>(stdout));
+  return parseJson<ShowEntryJson>(stdout);
+}
+
+export async function showEntry(
+  entry: string,
+  storeDir: string,
+  passphrase?: string,
+): Promise<string> {
+  return formatShowEntryOutput(
+    await showEntryContent(entry, storeDir, passphrase),
+  );
 }
 
 export async function generateEntry(
@@ -190,6 +210,17 @@ export async function generateEntry(
 ): Promise<GenerateEntryResult> {
   const args = ["--store-dir", storeDir, "generate", entry, "--json"];
 
+  appendGenerateOptions(args, options);
+  if (options.force) args.push("--force");
+
+  const stdout = await run(args);
+  return parseJson<GenerateEntryResult>(stdout);
+}
+
+function appendGenerateOptions(
+  args: string[],
+  options: GenerateEntryOptions,
+): void {
   if (options.kind === "phrase") {
     args.push("--phrase");
     if (options.words !== undefined)
@@ -210,11 +241,30 @@ export async function generateEntry(
       args.push("--symbols", options.symbolCharacters);
     }
   }
+}
 
-  if (options.force) args.push("--force");
-
+export async function generateSecret(
+  options: GenerateEntryOptions,
+): Promise<GenerateSecretResult> {
+  const args = ["generate", "--dry-run", "--json"];
+  appendGenerateOptions(args, options);
   const stdout = await run(args);
-  return parseJson<GenerateEntryResult>(stdout);
+  return parseJson<GenerateSecretResult>(stdout);
+}
+
+export async function writeEntry(
+  entry: string,
+  storeDir: string,
+  content: string,
+  options: { force?: boolean } = {},
+): Promise<WriteEntryResult> {
+  const args = ["--store-dir", storeDir, "insert", "--multiline", "--json"];
+  if (options.force) args.push("--force");
+  args.push(entry);
+
+  const stdin = content.endsWith("\n") ? content : `${content}\n`;
+  const stdout = await run(args, stdin);
+  return parseJson<WriteEntryResult>(stdout);
 }
 
 export async function removeEntry(
@@ -251,6 +301,9 @@ export async function version(): Promise<void> {
 export type {
   GenerateEntryOptions,
   GenerateEntryResult,
+  GenerateSecretResult,
   OtpResult,
   RemoveEntryResult,
+  ShowEntryJson,
+  WriteEntryResult,
 };

@@ -22,6 +22,7 @@ import {
 import { loadVaultItems } from "../application/load-vault-items";
 import { ALL_FOLDERS, type VaultItem } from "../domain/vault-item";
 import Content from "./content";
+import EditEntry from "./edit-entry";
 
 const FOLDER_TAG_COLOR = "#8E8E93";
 
@@ -191,6 +192,11 @@ export default function Store({ storepath }: Props) {
               <Action.Push
                 title="Show Entry"
                 target={<Content storepath={storepath} entry={item.entry} />}
+              />
+              <Action.Push
+                icon={Icon.Pencil}
+                title="Edit Entry"
+                target={<EditEntry storepath={storepath} entry={item.entry} />}
               />
               <Action
                 icon={Icon.Trash}

@@ -8,13 +8,14 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { RpassError, showEntry } from "../../rpass/application/rpass-client";
 import {
   parseVaultEntryRows,
   type VaultEntryRow,
 } from "../domain/vault-entry-content";
 import { copyPassword, pastePassword } from "./clipboard";
+import EditEntry from "./edit-entry";
 import { getOptionIcon } from "./icons";
 import OtpRow from "./otp-row";
 
@@ -29,9 +30,11 @@ function capitalizeFirstLetter(str: string): string {
 function EntryRow({
   row,
   defaultAction,
+  editTarget,
 }: {
   row: VaultEntryRow;
   defaultAction: string;
+  editTarget: ReactNode;
 }) {
   const [visible, setVisible] = useState(false);
 
@@ -85,6 +88,11 @@ function EntryRow({
             title={toggleTitle}
             onAction={() => setVisible((v) => !v)}
             shortcut={{ modifiers: ["opt"], key: "e" }}
+          />
+          <Action.Push
+            icon={Icon.Pencil}
+            title="Edit Entry"
+            target={editTarget}
           />
         </ActionPanel>
       }
@@ -228,6 +236,10 @@ export default function Content({ storepath, entry }: Props) {
     );
   }
 
+  const editTarget = (
+    <EditEntry storepath={storepath} entry={entry} passphrase={passphrase} />
+  );
+
   return (
     <List isLoading={isLoading}>
       {rows.map((row) =>
@@ -237,9 +249,15 @@ export default function Content({ storepath, entry }: Props) {
             entry={entry}
             storepath={storepath}
             passphrase={passphrase}
+            editTarget={editTarget}
           />
         ) : (
-          <EntryRow key={row.idx} row={row} defaultAction={defaultAction} />
+          <EntryRow
+            key={row.idx}
+            row={row}
+            defaultAction={defaultAction}
+            editTarget={editTarget}
+          />
         ),
       )}
     </List>

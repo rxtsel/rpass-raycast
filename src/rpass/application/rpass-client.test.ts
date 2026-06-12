@@ -6,11 +6,14 @@ import { afterEach, beforeEach, test } from "node:test";
 import {
   generateEntry,
   generateOtp,
+  generateSecret,
   listEntries,
   removeEntry,
   RpassError,
   setRpassExecutablePathForTests,
   showEntry,
+  showEntryContent,
+  writeEntry,
 } from "./rpass-client";
 
 interface FakeCommandResult {
@@ -163,6 +166,22 @@ test("generateEntry calls rpass generate for password options", async () => {
   });
 });
 
+test("showEntryContent returns strict JSON output", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      password: "dummy-password",
+      fields: [{ name: "username", value: "demo" }],
+      extra_lines: ["note"],
+    }),
+  });
+
+  assert.deepEqual(await showEntryContent("example/login", "/tmp/store"), {
+    password: "dummy-password",
+    fields: [{ name: "username", value: "demo" }],
+    extra_lines: ["note"],
+  });
+});
+
 test("generateEntry calls rpass generate for passphrase options", async () => {
   configureFakeCommand({
     stdout: JSON.stringify({
@@ -197,6 +216,66 @@ test("generateEntry calls rpass generate for passphrase options", async () => {
       "--number",
     ],
     stdin: "",
+  });
+});
+
+test("generateSecret calls rpass generate dry-run without a store", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({ password: "dummy-password", dry_run: true }),
+  });
+
+  assert.deepEqual(
+    await generateSecret({
+      kind: "password",
+      length: 20,
+      lowercase: true,
+      uppercase: true,
+      numbers: false,
+      symbols: false,
+    }),
+    { password: "dummy-password", dry_run: true },
+  );
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: [
+      "generate",
+      "--dry-run",
+      "--json",
+      "--length",
+      "20",
+      "--no-numbers",
+      "--no-symbols",
+    ],
+    stdin: "",
+  });
+});
+
+test("writeEntry calls rpass insert multiline with stdin", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({ name: "example/login" }),
+  });
+
+  assert.deepEqual(
+    await writeEntry(
+      "example/login",
+      "/tmp/store",
+      "dummy-password\nusername: demo",
+      {
+        force: true,
+      },
+    ),
+    { name: "example/login" },
+  );
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: [
+      "--store-dir",
+      "/tmp/store",
+      "insert",
+      "--multiline",
+      "--json",
+      "--force",
+      "example/login",
+    ],
+    stdin: "dummy-password\nusername: demo\n",
   });
 });
 
