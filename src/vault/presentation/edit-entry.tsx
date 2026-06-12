@@ -32,6 +32,7 @@ interface FormErrors {
   password?: string;
   length?: string;
   words?: string;
+  characterSet?: string;
   passphrase?: string;
 }
 
@@ -54,8 +55,12 @@ function parsePositiveInteger(value: string): number | undefined {
   return parsed;
 }
 
+function passphraseParts(password: string): string[] {
+  return password.split(/[-_\s]+/).filter(Boolean);
+}
+
 function inferSecretKind(password: string): SecretKind {
-  const parts = password.split(/[-_\s]+/).filter(Boolean);
+  const parts = passphraseParts(password);
   if (parts.length < 3) return "password";
 
   const wordParts = parts.filter((part) => /^[a-z]+$/i.test(part));
@@ -66,12 +71,34 @@ function inferSecretKind(password: string): SecretKind {
     : "password";
 }
 
+function inferPassphraseOptions(password: string): {
+  words: string;
+  capitalize: boolean;
+  number: boolean;
+} {
+  const parts = passphraseParts(password);
+  const wordParts = parts.filter((part) => /^[a-z]+$/i.test(part));
+  const numericParts = parts.filter((part) => /^\d+$/.test(part));
+
+  return {
+    words: String(wordParts.length || Number(DEFAULT_WORDS)),
+    capitalize: wordParts.some((part) => /^[A-Z]/.test(part)),
+    number: numericParts.length > 0,
+  };
+}
+
 export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const [password, setPassword] = useState("");
   const [additionalLines, setAdditionalLines] = useState("");
   const [kind, setKind] = useState<SecretKind>("password");
   const [length, setLength] = useState(DEFAULT_PASSWORD_LENGTH);
+  const [lowercase, setLowercase] = useState(true);
+  const [uppercase, setUppercase] = useState(true);
+  const [numbers, setNumbers] = useState(true);
+  const [symbols, setSymbols] = useState(true);
   const [words, setWords] = useState(DEFAULT_WORDS);
+  const [capitalize, setCapitalize] = useState(false);
+  const [appendNumber, setAppendNumber] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [needsPassphrase, setNeedsPassphrase] = useState(false);
   const [unlockPassphrase, setUnlockPassphrase] = useState<string>();
@@ -98,7 +125,19 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
         setPassword(content.password);
         skipNextOptionsRegenerateRef.current = true;
-        setKind(inferSecretKind(content.password));
+        const inferredKind = inferSecretKind(content.password);
+        setKind(inferredKind);
+        if (inferredKind === "phrase") {
+          const options = inferPassphraseOptions(content.password);
+          setWords(options.words);
+          setCapitalize(options.capitalize);
+          setAppendNumber(options.number);
+        } else {
+          setLowercase(true);
+          setUppercase(true);
+          setNumbers(true);
+          setSymbols(true);
+        }
         setNeedsPassphrase(false);
         setLastError(undefined);
         setAdditionalLines(
@@ -146,6 +185,9 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
       if (parsedLength === undefined || parsedLength > 1024) {
         nextErrors.length = "Password length must be between 1 and 1024";
       }
+      if (!lowercase && !uppercase && !numbers && !symbols) {
+        nextErrors.characterSet = "Enable at least one character set";
+      }
     } else {
       const parsedWords = parsePositiveInteger(words);
       if (parsedWords === undefined || parsedWords > 20) {
@@ -191,8 +233,20 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     try {
       const result = await generateSecret(
         kind === "phrase"
-          ? { kind: "phrase", words: Number(words) }
-          : { kind: "password", length: Number(length) },
+          ? {
+              kind: "phrase",
+              words: Number(words),
+              capitalize,
+              number: appendNumber,
+            }
+          : {
+              kind: "password",
+              length: Number(length),
+              lowercase,
+              uppercase,
+              numbers,
+              symbols,
+            },
       );
       setPassword(result.password);
     } catch (error) {
@@ -224,7 +278,17 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [kind, length, words]);
+  }, [
+    kind,
+    length,
+    lowercase,
+    uppercase,
+    numbers,
+    symbols,
+    words,
+    capitalize,
+    appendNumber,
+  ]);
 
   async function save() {
     if (!validate()) return;
@@ -364,29 +428,72 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         <Form.Dropdown.Item value="phrase" title="Passphrase" />
       </Form.Dropdown>
       {kind === "password" ? (
-        <Form.TextField
-          id="length"
-          title="Length"
-          value={length}
-          error={errors.length}
-          onChange={(value) => {
-            setLength(value);
-            if (errors.length)
-              setErrors((current) => ({ ...current, length: undefined }));
-          }}
-        />
+        <>
+          <Form.TextField
+            id="length"
+            title="Length"
+            value={length}
+            error={errors.length}
+            onChange={(value) => {
+              setLength(value);
+              if (errors.length)
+                setErrors((current) => ({ ...current, length: undefined }));
+            }}
+          />
+          <Form.Checkbox
+            id="lowercase"
+            label="Lowercase"
+            value={lowercase}
+            onChange={setLowercase}
+          />
+          <Form.Checkbox
+            id="uppercase"
+            label="Uppercase"
+            value={uppercase}
+            onChange={setUppercase}
+          />
+          <Form.Checkbox
+            id="numbers"
+            label="Numbers"
+            value={numbers}
+            onChange={setNumbers}
+          />
+          <Form.Checkbox
+            id="symbols"
+            label="Symbols"
+            value={symbols}
+            onChange={setSymbols}
+          />
+          {errors.characterSet ? (
+            <Form.Description text={errors.characterSet} />
+          ) : null}
+        </>
       ) : (
-        <Form.TextField
-          id="words"
-          title="Words"
-          value={words}
-          error={errors.words}
-          onChange={(value) => {
-            setWords(value);
-            if (errors.words)
-              setErrors((current) => ({ ...current, words: undefined }));
-          }}
-        />
+        <>
+          <Form.TextField
+            id="words"
+            title="Words"
+            value={words}
+            error={errors.words}
+            onChange={(value) => {
+              setWords(value);
+              if (errors.words)
+                setErrors((current) => ({ ...current, words: undefined }));
+            }}
+          />
+          <Form.Checkbox
+            id="capitalize"
+            label="Capitalize Words"
+            value={capitalize}
+            onChange={setCapitalize}
+          />
+          <Form.Checkbox
+            id="number"
+            label="Append Number"
+            value={appendNumber}
+            onChange={setAppendNumber}
+          />
+        </>
       )}
     </Form>
   );
