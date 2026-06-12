@@ -12,6 +12,10 @@ interface GenerateEntryResult {
   password: string;
 }
 
+interface RemoveEntryResult {
+  name: string;
+}
+
 interface PasswordGenerateOptions {
   kind: "password";
   length?: number;
@@ -213,6 +217,21 @@ export async function generateEntry(
   return parseJson<GenerateEntryResult>(stdout);
 }
 
+export async function removeEntry(
+  entry: string,
+  storeDir: string,
+): Promise<RemoveEntryResult> {
+  const stdout = await run([
+    "--store-dir",
+    storeDir,
+    "rm",
+    "--force",
+    entry,
+    "--json",
+  ]);
+  return parseJson<RemoveEntryResult>(stdout);
+}
+
 export async function generateOtp(
   entry: string,
   storeDir: string,
@@ -229,4 +248,9 @@ export async function version(): Promise<void> {
   await run(["--version"]);
 }
 
-export type { GenerateEntryOptions, GenerateEntryResult, OtpResult };
+export type {
+  GenerateEntryOptions,
+  GenerateEntryResult,
+  OtpResult,
+  RemoveEntryResult,
+};

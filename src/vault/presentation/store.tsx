@@ -1,7 +1,20 @@
-import { Action, ActionPanel, Icon, List } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Alert,
+  confirmAlert,
+  Icon,
+  List,
+  showToast,
+  Toast,
+} from "@raycast/api";
 import { getFavicon } from "@raycast/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { listEntries, RpassError } from "../../rpass/application/rpass-client";
+import {
+  listEntries,
+  removeEntry,
+  RpassError,
+} from "../../rpass/application/rpass-client";
 import {
   filterVaultItemsByFolder,
   getVaultFolders,
@@ -89,6 +102,43 @@ export default function Store({ storepath }: Props) {
     load();
   }, [load]);
 
+  const deleteEntry = useCallback(
+    async (item: VaultItem) => {
+      const confirmed = await confirmAlert({
+        title: "Delete Entry?",
+        message: `Delete '${item.entry}' from the password store? This cannot be undone.`,
+        primaryAction: {
+          title: "Delete Entry",
+          style: Alert.ActionStyle.Destructive,
+        },
+        dismissAction: {
+          title: "Cancel",
+        },
+      });
+
+      if (!confirmed) return;
+
+      setIsLoading(true);
+      setLastError(undefined);
+      try {
+        await removeEntry(item.entry, storepath);
+        setItems((currentItems) =>
+          currentItems.filter(
+            (currentItem) => currentItem.entry !== item.entry,
+          ),
+        );
+        await showToast(Toast.Style.Success, "Entry Deleted", item.entry);
+      } catch (error) {
+        const message = formatError(error);
+        setLastError(message);
+        await showToast(Toast.Style.Failure, "Failed to Delete Entry", message);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [storepath],
+  );
+
   const folders = useMemo(() => getVaultFolders(items), [items]);
   const filteredItems = useMemo(
     () => filterVaultItemsByFolder(items, selectedFolder),
@@ -141,6 +191,12 @@ export default function Store({ storepath }: Props) {
               <Action.Push
                 title="Show Entry"
                 target={<Content storepath={storepath} entry={item.entry} />}
+              />
+              <Action
+                icon={Icon.Trash}
+                style={Action.Style.Destructive}
+                title="Delete Entry"
+                onAction={() => deleteEntry(item)}
               />
             </ActionPanel>
           }

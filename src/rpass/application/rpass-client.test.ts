@@ -7,6 +7,7 @@ import {
   generateEntry,
   generateOtp,
   listEntries,
+  removeEntry,
   RpassError,
   setRpassExecutablePathForTests,
   showEntry,
@@ -194,6 +195,27 @@ test("generateEntry calls rpass generate for passphrase options", async () => {
       "_",
       "--capitalize",
       "--number",
+    ],
+    stdin: "",
+  });
+});
+
+test("removeEntry calls rpass rm with force and JSON output", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({ name: "example/login" }),
+  });
+
+  assert.deepEqual(await removeEntry("example/login", "/tmp/store"), {
+    name: "example/login",
+  });
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: [
+      "--store-dir",
+      "/tmp/store",
+      "rm",
+      "--force",
+      "example/login",
+      "--json",
     ],
     stdin: "",
   });
