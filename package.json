@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "ray develop",
     "lint": "ray lint",
-    "test": "tsx --test src/rpass/application/rpass-client.test.ts src/vault/domain/vault-entry-content.test.ts src/vault/domain/vault-item.test.ts src/vault/application/filter-vault-items.test.ts",
+    "test": "tsx --test src/rpass/application/rpass-client.test.ts src/vault/domain/vault-entry-content.test.ts src/vault/domain/entry-folders.test.ts src/vault/domain/vault-item.test.ts src/vault/application/filter-vault-items.test.ts",
     "fix-lint": "ray lint --fix",
     "build": "ray build",
     "publish": "npx @raycast/api@latest publish",
@@ -32,6 +32,13 @@
       "name": "vault",
       "title": "Vault",
       "description": "Browse, decrypt, and copy passwords from your pass-compatible vault.",
+      "subtitle": "rPass"
+    },
+    {
+      "mode": "view",
+      "name": "new-entry",
+      "title": "New Entry",
+      "description": "Generate and insert a new password or passphrase.",
       "subtitle": "rPass"
     }
   ],

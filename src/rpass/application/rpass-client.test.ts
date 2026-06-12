@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
 import {
+  generateEntry,
   generateOtp,
   listEntries,
   RpassError,
@@ -119,6 +120,82 @@ test("showEntry uses passphrase stdin and formats strict JSON output", async () 
       "example/login",
     ],
     stdin: "dummy-passphrase",
+  });
+});
+
+test("generateEntry calls rpass generate for password options", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      name: "example/login",
+      password: "dummy-password",
+    }),
+  });
+
+  assert.deepEqual(
+    await generateEntry("example/login", "/tmp/store", {
+      kind: "password",
+      length: 32,
+      lowercase: true,
+      uppercase: false,
+      numbers: true,
+      symbols: true,
+      symbolCharacters: "_-",
+      force: true,
+    }),
+    { name: "example/login", password: "dummy-password" },
+  );
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: [
+      "--store-dir",
+      "/tmp/store",
+      "generate",
+      "example/login",
+      "--json",
+      "--length",
+      "32",
+      "--no-uppercase",
+      "--symbols",
+      "_-",
+      "--force",
+    ],
+    stdin: "",
+  });
+});
+
+test("generateEntry calls rpass generate for passphrase options", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      name: "example/passphrase",
+      password: "dummy-passphrase",
+    }),
+  });
+
+  assert.deepEqual(
+    await generateEntry("example/passphrase", "/tmp/store", {
+      kind: "phrase",
+      words: 5,
+      separator: "_",
+      capitalize: true,
+      number: true,
+    }),
+    { name: "example/passphrase", password: "dummy-passphrase" },
+  );
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: [
+      "--store-dir",
+      "/tmp/store",
+      "generate",
+      "example/passphrase",
+      "--json",
+      "--phrase",
+      "--words",
+      "5",
+      "--separator",
+      "_",
+      "--capitalize",
+      "--number",
+    ],
+    stdin: "",
   });
 });
 

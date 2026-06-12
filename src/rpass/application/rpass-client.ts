@@ -1,9 +1,4 @@
 import { spawn } from "node:child_process";
-import type { getPreferenceValues as getPreferenceValuesType } from "@raycast/api";
-
-interface Preferences {
-  rpassExecutablePath?: string;
-}
 
 interface OtpResult {
   name: string;
@@ -12,20 +7,45 @@ interface OtpResult {
   period: number;
 }
 
+interface GenerateEntryResult {
+  name: string;
+  password: string;
+}
+
+interface PasswordGenerateOptions {
+  kind: "password";
+  length?: number;
+  lowercase?: boolean;
+  uppercase?: boolean;
+  numbers?: boolean;
+  symbols?: boolean;
+  symbolCharacters?: string;
+  force?: boolean;
+}
+
+interface PassphraseGenerateOptions {
+  kind: "phrase";
+  words?: number;
+  separator?: string;
+  capitalize?: boolean;
+  number?: boolean;
+  force?: boolean;
+}
+
+type GenerateEntryOptions = PasswordGenerateOptions | PassphraseGenerateOptions;
+
 let executablePathOverride: string | undefined;
 
-async function resolveExecutable(): Promise<string> {
-  if (executablePathOverride !== undefined) return executablePathOverride;
+function resolveExecutable(): string {
+  return executablePathOverride?.trim() || "rpass";
+}
 
-  const { getPreferenceValues } = (await import("@raycast/api")) as {
-    getPreferenceValues: typeof getPreferenceValuesType;
-  };
-  const { rpassExecutablePath } = getPreferenceValues<Preferences>();
-  return rpassExecutablePath?.trim() || "rpass";
+export function setRpassExecutablePath(path: string | undefined): void {
+  executablePathOverride = path;
 }
 
 export function setRpassExecutablePathForTests(path: string | undefined): void {
-  executablePathOverride = path;
+  setRpassExecutablePath(path);
 }
 
 export class RpassError extends Error {
@@ -62,7 +82,7 @@ function parseRpassError(stderr: string, code: number | null): RpassError {
 }
 
 async function run(args: string[], stdin?: string): Promise<string> {
-  const executable = await resolveExecutable();
+  const executable = resolveExecutable();
 
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
@@ -159,6 +179,40 @@ export async function showEntry(
   return formatShowEntryOutput(parseJson<ShowEntryJson>(stdout));
 }
 
+export async function generateEntry(
+  entry: string,
+  storeDir: string,
+  options: GenerateEntryOptions,
+): Promise<GenerateEntryResult> {
+  const args = ["--store-dir", storeDir, "generate", entry, "--json"];
+
+  if (options.kind === "phrase") {
+    args.push("--phrase");
+    if (options.words !== undefined)
+      args.push("--words", String(options.words));
+    if (options.separator !== undefined)
+      args.push("--separator", options.separator);
+    if (options.capitalize) args.push("--capitalize");
+    if (options.number) args.push("--number");
+  } else {
+    if (options.length !== undefined)
+      args.push("--length", String(options.length));
+    if (options.lowercase === false) args.push("--no-lowercase");
+    if (options.uppercase === false) args.push("--no-uppercase");
+    if (options.numbers === false) args.push("--no-numbers");
+    if (options.symbols === false) {
+      args.push("--no-symbols");
+    } else if (options.symbolCharacters) {
+      args.push("--symbols", options.symbolCharacters);
+    }
+  }
+
+  if (options.force) args.push("--force");
+
+  const stdout = await run(args);
+  return parseJson<GenerateEntryResult>(stdout);
+}
+
 export async function generateOtp(
   entry: string,
   storeDir: string,
@@ -175,4 +229,4 @@ export async function version(): Promise<void> {
   await run(["--version"]);
 }
 
-export type { OtpResult };
+export type { GenerateEntryOptions, GenerateEntryResult, OtpResult };
