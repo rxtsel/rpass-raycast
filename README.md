@@ -1,6 +1,6 @@
 # RPass Raycast Extension
 
-Browse a pass-compatible password store from Raycast using the `rpass` CLI. The extension can list vault entries, decrypt an entry, copy or paste passwords and metadata, and show TOTP codes when an entry contains an OTP URI.
+Browse a pass-compatible password store from Raycast using the `rpass` CLI. The extension can list vault entries, decrypt an entry, copy or paste passwords and metadata, show TOTP codes when an entry contains an OTP URI, and generate new password or passphrase entries.
 
 ## Requirements
 
@@ -40,6 +40,8 @@ The extension calls `rpass` with JSON output where available:
 rpass list --json
 rpass show example/login --json
 rpass otp example/login --json
+rpass generate example/login --json
+rpass generate example/passphrase --phrase --json
 ```
 
 Entries are addressed without the `.gpg` suffix. Use `example/login`, not `example/login.gpg`.
