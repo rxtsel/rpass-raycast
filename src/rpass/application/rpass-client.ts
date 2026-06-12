@@ -22,6 +22,11 @@ interface WriteEntryResult {
   name: string;
 }
 
+interface MoveEntryResult {
+  old_name: string;
+  new_name: string;
+}
+
 interface RemoveEntryResult {
   name: string;
 }
@@ -267,6 +272,20 @@ export async function writeEntry(
   return parseJson<WriteEntryResult>(stdout);
 }
 
+export async function moveEntry(
+  oldEntry: string,
+  newEntry: string,
+  storeDir: string,
+  options: { force?: boolean } = {},
+): Promise<MoveEntryResult> {
+  const args = ["--store-dir", storeDir, "mv"];
+  if (options.force) args.push("--force");
+  args.push(oldEntry, newEntry, "--json");
+
+  const stdout = await run(args);
+  return parseJson<MoveEntryResult>(stdout);
+}
+
 export async function removeEntry(
   entry: string,
   storeDir: string,
@@ -302,6 +321,7 @@ export type {
   GenerateEntryOptions,
   GenerateEntryResult,
   GenerateSecretResult,
+  MoveEntryResult,
   OtpResult,
   RemoveEntryResult,
   ShowEntryJson,

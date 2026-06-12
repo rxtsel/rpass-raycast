@@ -8,6 +8,7 @@ import {
   generateOtp,
   generateSecret,
   listEntries,
+  moveEntry,
   removeEntry,
   RpassError,
   setRpassExecutablePathForTests,
@@ -276,6 +277,34 @@ test("writeEntry calls rpass insert multiline with stdin", async () => {
       "example/login",
     ],
     stdin: "dummy-password\nusername: demo\n",
+  });
+});
+
+test("moveEntry calls rpass mv with JSON output", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      old_name: "example/login",
+      new_name: "archive/login",
+    }),
+  });
+
+  assert.deepEqual(
+    await moveEntry("example/login", "archive/login", "/tmp/store"),
+    {
+      old_name: "example/login",
+      new_name: "archive/login",
+    },
+  );
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: [
+      "--store-dir",
+      "/tmp/store",
+      "mv",
+      "example/login",
+      "archive/login",
+      "--json",
+    ],
+    stdin: "",
   });
 });
 

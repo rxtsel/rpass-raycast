@@ -12,10 +12,13 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   generateSecret,
+  listEntries,
+  moveEntry,
   RpassError,
   showEntryContent,
   writeEntry,
 } from "../../rpass/application/rpass-client";
+import { getEntryParentFolders } from "../domain/entry-folders";
 
 const DEFAULT_PASSWORD_LENGTH = "14";
 const DEFAULT_WORDS = "4";
@@ -29,6 +32,7 @@ interface Props {
 }
 
 interface FormErrors {
+  entryName?: string;
   password?: string;
   length?: string;
   words?: string;
@@ -55,6 +59,38 @@ function parsePositiveInteger(value: string): number | undefined {
   return parsed;
 }
 
+function normalizeEntryName(folder: string, name: string): string {
+  return [folder.trim(), name.trim()]
+    .filter(Boolean)
+    .join("/")
+    .split("/")
+    .filter(Boolean)
+    .join("/");
+}
+
+function splitEntryPath(entry: string): { folder: string; name: string } {
+  const parts = entry.split("/").filter(Boolean);
+  return {
+    folder: parts.slice(0, -1).join("/"),
+    name: parts.at(-1) ?? entry,
+  };
+}
+
+function validateEntryName(name: string): string | undefined {
+  const trimmed = name.trim();
+  if (!trimmed) return "Entry name is required";
+  if (trimmed.endsWith(".gpg")) return "Entry name must not include .gpg";
+  if (trimmed.includes("\\")) return "Use / as the entry separator";
+  if (
+    trimmed
+      .split("/")
+      .some((part) => part === "" || part === "." || part === "..")
+  ) {
+    return "Entry name must not contain empty, . or .. segments";
+  }
+  return undefined;
+}
+
 function passphraseParts(password: string): string[] {
   return password.split(/[-_\s]+/).filter(Boolean);
 }
@@ -65,7 +101,8 @@ function inferSecretKind(password: string): SecretKind {
 
   const wordParts = parts.filter((part) => /^[a-z]+$/i.test(part));
   const numericParts = parts.filter((part) => /^\d+$/.test(part));
-  return wordParts.length >= 3 && wordParts.length + numericParts.length === parts.length
+  return wordParts.length >= 3 &&
+    wordParts.length + numericParts.length === parts.length
     ? "phrase"
     : "password";
 }
@@ -87,6 +124,10 @@ function inferPassphraseOptions(password: string): {
 }
 
 export default function EditEntry({ storepath, entry, passphrase }: Props) {
+  const initialPath = splitEntryPath(entry);
+  const [folders, setFolders] = useState<string[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState(initialPath.folder);
+  const [entryName, setEntryName] = useState(initialPath.name);
   const [password, setPassword] = useState("");
   const [additionalLines, setAdditionalLines] = useState("");
   const [kind, setKind] = useState<SecretKind>("password");
@@ -107,6 +148,24 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const [errors, setErrors] = useState<FormErrors>({});
   const didMountOptionsRef = useRef(false);
   const skipNextOptionsRegenerateRef = useRef(false);
+  const newEntry = normalizeEntryName(selectedFolder, entryName);
+
+  useEffect(() => {
+    let cancelled = false;
+    listEntries(storepath)
+      .then((entries) => {
+        if (!cancelled) {
+          setFolders(getEntryParentFolders([...entries, entry]));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFolders(getEntryParentFolders([entry]));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entry, storepath]);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +174,11 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
       setIsLoading(true);
       setLastError(undefined);
       try {
-        const content = await showEntryContent(entry, storepath, unlockPassphrase ?? passphrase);
+        const content = await showEntryContent(
+          entry,
+          storepath,
+          unlockPassphrase ?? passphrase,
+        );
         if (cancelled) return;
 
         setPassword(content.password);
@@ -146,12 +209,19 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         );
       } catch (error) {
         if (!cancelled) {
-          if (error instanceof RpassError && error.code === "gpg_passphrase_required") {
+          if (
+            error instanceof RpassError &&
+            error.code === "gpg_passphrase_required"
+          ) {
             setNeedsPassphrase(true);
           } else {
             const message = formatError(error);
             setLastError(message);
-            await showToast(Toast.Style.Failure, "Failed to Load Entry", message);
+            await showToast(
+              Toast.Style.Failure,
+              "Failed to Load Entry",
+              message,
+            );
           }
         }
       } finally {
@@ -189,6 +259,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
   function validate(): boolean {
     const nextErrors: FormErrors = {};
+    nextErrors.entryName = validateEntryName(entryName);
     if (!password) nextErrors.password = "Password is required";
     setErrors(nextErrors);
     return Object.values(nextErrors).every((error) => error === undefined);
@@ -240,7 +311,11 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
-      await showToast(Toast.Style.Failure, "Failed to Generate Secret", message);
+      await showToast(
+        Toast.Style.Failure,
+        "Failed to Generate Secret",
+        message,
+      );
     } finally {
       setIsLoading(false);
     }
@@ -262,16 +337,29 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [kind, length, lowercase, uppercase, numbers, symbols, words, capitalize, appendNumber]);
+  }, [
+    kind,
+    length,
+    lowercase,
+    uppercase,
+    numbers,
+    symbols,
+    words,
+    capitalize,
+    appendNumber,
+  ]);
 
   async function save() {
     if (!validate()) return;
 
+    const isMoving = newEntry !== entry;
     const confirmed = await confirmAlert({
-      title: "Update Entry?",
-      message: `Overwrite '${entry}' with the edited content?`,
+      title: isMoving ? "Move and Update Entry?" : "Update Entry?",
+      message: isMoving
+        ? `Move '${entry}' to '${newEntry}' and update its content?`
+        : `Overwrite '${entry}' with the edited content?`,
       primaryAction: {
-        title: "Update Entry",
+        title: isMoving ? "Move and Update Entry" : "Update Entry",
         style: Alert.ActionStyle.Destructive,
       },
       dismissAction: {
@@ -284,9 +372,18 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     setIsLoading(true);
     setLastError(undefined);
     try {
-      const content = [password, additionalLines.trim()].filter(Boolean).join("\n");
-      await writeEntry(entry, storepath, content, { force: true });
-      await showToast(Toast.Style.Success, "Entry Updated", entry);
+      const content = [password, additionalLines.trim()]
+        .filter(Boolean)
+        .join("\n");
+      if (isMoving) {
+        await moveEntry(entry, newEntry, storepath);
+      }
+      await writeEntry(newEntry, storepath, content, { force: true });
+      await showToast(
+        Toast.Style.Success,
+        isMoving ? "Entry Moved and Updated" : "Entry Updated",
+        newEntry,
+      );
       await popToRoot({ clearSearchBar: true });
     } catch (error) {
       const message = formatError(error);
@@ -351,7 +448,11 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
       isLoading={isLoading}
       actions={
         <ActionPanel>
-          <Action.SubmitForm icon={Icon.CheckCircle} title="Update Entry" onSubmit={save} />
+          <Action.SubmitForm
+            icon={Icon.CheckCircle}
+            title="Update Entry"
+            onSubmit={save}
+          />
           <Action
             icon={Icon.ArrowClockwise}
             title="Regenerate Secret"
@@ -359,12 +460,43 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             onAction={regenerateSecret}
           />
           {lastError ? (
-            <Action.CopyToClipboard title="Copy Last Error" content={lastError} />
+            <Action.CopyToClipboard
+              title="Copy Last Error"
+              content={lastError}
+            />
           ) : null}
         </ActionPanel>
       }
     >
-      <Form.Description text={`Entry path: ${entry}`} />
+      <Form.Dropdown
+        id="folder"
+        title="Folder"
+        value={selectedFolder}
+        onChange={setSelectedFolder}
+      >
+        <Form.Dropdown.Item value="" title="No Folder" />
+        {folders.map((folder) => (
+          <Form.Dropdown.Item key={folder} value={folder} title={folder} />
+        ))}
+      </Form.Dropdown>
+      <Form.TextField
+        id="entryName"
+        title="Entry Name"
+        value={entryName}
+        error={errors.entryName}
+        onChange={(value) => {
+          setEntryName(value);
+          if (errors.entryName)
+            setErrors((current) => ({ ...current, entryName: undefined }));
+        }}
+        onBlur={() =>
+          setErrors((current) => ({
+            ...current,
+            entryName: validateEntryName(entryName),
+          }))
+        }
+      />
+      <Form.Description text={`Entry path: ${newEntry || "—"}`} />
       <Form.TextField
         id="password"
         title="Password"
@@ -372,7 +504,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         error={errors.password}
         onChange={(value) => {
           setPassword(value);
-          if (errors.password) setErrors((current) => ({ ...current, password: undefined }));
+          if (errors.password)
+            setErrors((current) => ({ ...current, password: undefined }));
         }}
       />
       <Form.TextArea
@@ -401,7 +534,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             error={errors.length}
             onChange={(value) => {
               setLength(value);
-              if (errors.length) setErrors((current) => ({ ...current, length: undefined }));
+              if (errors.length)
+                setErrors((current) => ({ ...current, length: undefined }));
             }}
           />
           <Form.Checkbox
@@ -416,9 +550,21 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             value={uppercase}
             onChange={setUppercase}
           />
-          <Form.Checkbox id="numbers" label="Numbers" value={numbers} onChange={setNumbers} />
-          <Form.Checkbox id="symbols" label="Symbols" value={symbols} onChange={setSymbols} />
-          {errors.characterSet ? <Form.Description text={errors.characterSet} /> : null}
+          <Form.Checkbox
+            id="numbers"
+            label="Numbers"
+            value={numbers}
+            onChange={setNumbers}
+          />
+          <Form.Checkbox
+            id="symbols"
+            label="Symbols"
+            value={symbols}
+            onChange={setSymbols}
+          />
+          {errors.characterSet ? (
+            <Form.Description text={errors.characterSet} />
+          ) : null}
         </>
       ) : (
         <>
@@ -429,7 +575,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             error={errors.words}
             onChange={(value) => {
               setWords(value);
-              if (errors.words) setErrors((current) => ({ ...current, words: undefined }));
+              if (errors.words)
+                setErrors((current) => ({ ...current, words: undefined }));
             }}
           />
           <Form.Checkbox
