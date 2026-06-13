@@ -8,7 +8,7 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS,
   RpassError,
@@ -52,35 +52,25 @@ function EntryRow({
 }) {
   const [visible, setVisible] = useState(false);
 
-  const { toggleTitle, toggleIcon, itemTitle } = useMemo(
-    () =>
-      visible
-        ? {
-            toggleTitle: "Hide Value",
-            toggleIcon: Icon.EyeDisabled,
-            itemTitle: `${row.name}: ${row.value}`,
-          }
-        : {
-            toggleTitle: "Show Value",
-            toggleIcon: Icon.Eye,
-            itemTitle: row.name,
-          },
-    [visible, row],
-  );
+  const toggleTitle = visible ? "Hide Value" : "Show Value";
+  const toggleIcon = visible ? Icon.EyeSlash : Icon.Eye;
 
   return (
     <List.Item
       icon={getOptionIcon(row.name)}
-      title={capitalizeFirstLetter(itemTitle)}
+      title={capitalizeFirstLetter(row.name)}
+      accessories={visible ? [{ text: row.value }] : undefined}
       actions={
         <ActionPanel>
           {defaultAction === "copy" ? (
             <>
               <Action
+                icon={Icon.Clipboard}
                 title="Copy to Clipboard"
                 onAction={() => copyPassword(row.value)}
               />
               <Action
+                icon={Icon.TextCursor}
                 title="Paste in Active App"
                 onAction={() => pastePassword(row.value)}
               />
@@ -88,10 +78,12 @@ function EntryRow({
           ) : (
             <>
               <Action
+                icon={Icon.TextCursor}
                 title="Paste in Active App"
                 onAction={() => pastePassword(row.value)}
               />
               <Action
+                icon={Icon.Clipboard}
                 title="Copy to Clipboard"
                 onAction={() => copyPassword(row.value)}
               />

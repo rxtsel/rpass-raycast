@@ -253,6 +253,7 @@ export default function Store({ storepath }: Props) {
           actions={
             <ActionPanel>
               <Action.Push
+                icon={Icon.Eye}
                 title="Show Entry"
                 target={<Content storepath={storepath} entry={item.entry} />}
               />
