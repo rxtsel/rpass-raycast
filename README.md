@@ -146,19 +146,3 @@ npx tsc --noEmit
 npm test
 npm run lint -- --exit-on-error --non-interactive
 ```
-
-Optional build check:
-
-```bash
-npm run build
-```
-
-## Test Data Safety
-
-Use dummy examples only in tests, docs, issues, and screenshots:
-
-- entries: `example/login`, `demo/account`, `team/example/login`
-- domains: `example.invalid`
-- passwords: `dummy-password`, `new-dummy-password`
-
-Do not put real credentials, real service domains, or personal data in this repository.
