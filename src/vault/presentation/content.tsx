@@ -16,6 +16,11 @@ import {
 } from "../domain/vault-entry-content";
 import { copyPassword, pastePassword } from "./clipboard";
 import EditEntry from "./edit-entry";
+import {
+  appendGpgTimeoutHelp,
+  GPG_TIMEOUT_HELP,
+  isGpgTimeoutOrPinentryError,
+} from "./gpg-timeout-help";
 import { getOptionIcon } from "./icons";
 import OtpRow from "./otp-row";
 
@@ -118,6 +123,7 @@ export default function Content({ storepath, entry }: Props) {
   const [passphraseError, setPassphraseError] = useState<string>();
   const [passphraseVisible, setPassphraseVisible] = useState(false);
   const [lastError, setLastError] = useState<string>();
+  const [lastErrorHasGpgHelp, setLastErrorHasGpgHelp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   async function load(passphrase?: string) {
@@ -128,6 +134,7 @@ export default function Content({ storepath, entry }: Props) {
       setPassphrase(passphrase);
       setNeedsPassphrase(false);
       setLastError(undefined);
+      setLastErrorHasGpgHelp(false);
     } catch (error) {
       if (
         error instanceof RpassError &&
@@ -135,13 +142,16 @@ export default function Content({ storepath, entry }: Props) {
       ) {
         setNeedsPassphrase(true);
       } else {
-        const message =
+        const baseMessage =
           error instanceof RpassError
             ? `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`
             : error instanceof Error
               ? error.message
               : String(error);
+        const hasGpgHelp = isGpgTimeoutOrPinentryError(error);
+        const message = appendGpgTimeoutHelp(baseMessage, error);
         setLastError(message);
+        setLastErrorHasGpgHelp(hasGpgHelp);
         showToast(Toast.Style.Failure, "Failed to decrypt entry", message);
       }
     } finally {
@@ -224,6 +234,12 @@ export default function Content({ storepath, entry }: Props) {
           actions={
             <ActionPanel>
               <Action.CopyToClipboard title="Copy Error" content={lastError} />
+              {lastErrorHasGpgHelp ? (
+                <Action.CopyToClipboard
+                  title="Copy GPG Timeout Help"
+                  content={GPG_TIMEOUT_HELP}
+                />
+              ) : null}
               <Action
                 title="Retry"
                 icon={Icon.ArrowClockwise}

@@ -19,6 +19,11 @@ import {
   writeEntry,
 } from "../../rpass/application/rpass-client";
 import { getEntryParentFolders } from "../domain/entry-folders";
+import {
+  appendGpgTimeoutHelp,
+  GPG_TIMEOUT_HELP,
+  isGpgTimeoutOrPinentryError,
+} from "./gpg-timeout-help";
 
 const DEFAULT_PASSWORD_LENGTH = "14";
 const DEFAULT_WORDS = "4";
@@ -45,12 +50,14 @@ interface PassphraseValues {
 }
 
 function formatError(error: unknown): string {
-  if (error instanceof RpassError) {
-    return `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`;
-  }
+  const message =
+    error instanceof RpassError
+      ? `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`
+      : error instanceof Error
+        ? error.message
+        : String(error);
 
-  if (error instanceof Error) return error.message;
-  return String(error);
+  return appendGpgTimeoutHelp(message, error);
 }
 
 function parsePositiveInteger(value: string): number | undefined {
@@ -145,6 +152,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const [passphraseInput, setPassphraseInput] = useState("");
   const [passphraseVisible, setPassphraseVisible] = useState(false);
   const [lastError, setLastError] = useState<string>();
+  const [lastErrorHasGpgHelp, setLastErrorHasGpgHelp] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const didMountOptionsRef = useRef(false);
   const skipNextOptionsRegenerateRef = useRef(false);
@@ -173,6 +181,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     async function load() {
       setIsLoading(true);
       setLastError(undefined);
+      setLastErrorHasGpgHelp(false);
       try {
         const content = await showEntryContent(
           entry,
@@ -198,6 +207,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         }
         setNeedsPassphrase(false);
         setLastError(undefined);
+        setLastErrorHasGpgHelp(false);
         setAdditionalLines(
           [
             ...content.fields.map((field) => `${field.name}: ${field.value}`),
@@ -217,6 +227,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
           } else {
             const message = formatError(error);
             setLastError(message);
+            setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
             await showToast(
               Toast.Style.Failure,
               "Failed to Load Entry",
@@ -289,6 +300,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
     setIsLoading(true);
     setLastError(undefined);
+    setLastErrorHasGpgHelp(false);
     try {
       const result = await generateSecret(
         kind === "phrase"
@@ -311,6 +323,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
+      setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
       await showToast(
         Toast.Style.Failure,
         "Failed to Generate Secret",
@@ -371,6 +384,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
     setIsLoading(true);
     setLastError(undefined);
+    setLastErrorHasGpgHelp(false);
     try {
       const content = [password, additionalLines.trim()]
         .filter(Boolean)
@@ -388,6 +402,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
+      setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
       await showToast(Toast.Style.Failure, "Failed to Update Entry", message);
     } finally {
       setIsLoading(false);
@@ -459,6 +474,12 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
             onAction={regenerateSecret}
           />
+          {lastErrorHasGpgHelp ? (
+            <Action.CopyToClipboard
+              title="Copy GPG Timeout Help"
+              content={GPG_TIMEOUT_HELP}
+            />
+          ) : null}
           {lastError ? (
             <Action.CopyToClipboard
               title="Copy Last Error"
