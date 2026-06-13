@@ -79,6 +79,7 @@ const UNLOCK_WITH_PASSPHRASE_TIMEOUT_MS = 60000;
 export const OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS = 3000;
 
 let executablePathOverride: string | undefined;
+let gpgExecutablePathOverride: string | undefined;
 
 function getExecutableCandidates(): string[] {
   const home = homedir();
@@ -100,12 +101,55 @@ function resolveExecutable(): string {
   );
 }
 
+function getGpgExecutableCandidates(): string[] {
+  return [
+    "/opt/homebrew/bin/gpg",
+    "/usr/local/bin/gpg",
+    "/usr/bin/gpg",
+    "/opt/homebrew/bin/gpg2",
+    "/usr/local/bin/gpg2",
+    "/usr/bin/gpg2",
+  ];
+}
+
+function resolveGpgExecutable(): string | undefined {
+  const configuredPath = gpgExecutablePathOverride?.trim();
+  if (configuredPath) return configuredPath;
+
+  if (process.env.PASSWORD_STORE_GPG?.trim()) return undefined;
+
+  return getGpgExecutableCandidates().find((candidate) =>
+    existsSync(candidate),
+  );
+}
+
+function withRaycastCliPath(pathValue: string | undefined): string {
+  const cliDirs = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+  const pathParts = (pathValue ?? "").split(":").filter(Boolean);
+  return [...new Set([...cliDirs, ...pathParts])].join(":");
+}
+
+function getChildEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env, PATH: withRaycastCliPath(process.env.PATH) };
+  const gpgExecutable = resolveGpgExecutable();
+  if (gpgExecutable) env.PASSWORD_STORE_GPG = gpgExecutable;
+  return env;
+}
+
 export function setRpassExecutablePath(path: string | undefined): void {
   executablePathOverride = path;
 }
 
+export function setGpgExecutablePath(path: string | undefined): void {
+  gpgExecutablePathOverride = path;
+}
+
 export function setRpassExecutablePathForTests(path: string | undefined): void {
   setRpassExecutablePath(path);
+}
+
+export function setGpgExecutablePathForTests(path: string | undefined): void {
+  setGpgExecutablePath(path);
 }
 
 export class RpassError extends Error {
@@ -150,6 +194,7 @@ async function runRaw(
 
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
+      env: getChildEnv(),
       stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
     });
     const timeout = setTimeout(() => {

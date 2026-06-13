@@ -37,21 +37,21 @@
       "name": "vault",
       "title": "Vault",
       "description": "Browse, decrypt, and copy passwords from your pass-compatible vault.",
-      "subtitle": "rPass"
+      "subtitle": "RPass"
     },
     {
       "mode": "view",
       "name": "new-entry",
       "title": "New Entry",
       "description": "Generate and insert a new password or passphrase.",
-      "subtitle": "rPass"
+      "subtitle": "RPass"
     },
     {
       "mode": "view",
       "name": "sync-vault",
       "title": "Sync Vault",
       "description": "Inspect and sync the password store Git repository.",
-      "subtitle": "rPass"
+      "subtitle": "RPass"
     }
   ],
   "platforms": [
@@ -64,6 +64,13 @@
       "type": "textfield",
       "title": "rpass Executable Path",
       "description": "Path to the rpass binary. Leave empty if rpass is in PATH.",
+      "required": false
+    },
+    {
+      "name": "gpgExecutablePath",
+      "type": "textfield",
+      "title": "GPG Executable Path",
+      "description": "Path to the gpg binary. Leave empty to auto-detect Homebrew/system paths.",
       "required": false
     },
     {
@@ -126,5 +133,5 @@
       ]
     }
   ],
-  "title": "rPass"
+  "title": "RPass"
 }

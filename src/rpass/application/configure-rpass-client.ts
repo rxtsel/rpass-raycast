@@ -1,11 +1,14 @@
 import { getPreferenceValues } from "@raycast/api";
-import { setRpassExecutablePath } from "./rpass-client";
+import { setGpgExecutablePath, setRpassExecutablePath } from "./rpass-client";
 
 interface Preferences {
   rpassExecutablePath?: string;
+  gpgExecutablePath?: string;
 }
 
 export function configureRpassClientFromPreferences(): void {
-  const { rpassExecutablePath } = getPreferenceValues<Preferences>();
+  const { rpassExecutablePath, gpgExecutablePath } =
+    getPreferenceValues<Preferences>();
   setRpassExecutablePath(rpassExecutablePath);
+  setGpgExecutablePath(gpgExecutablePath);
 }
