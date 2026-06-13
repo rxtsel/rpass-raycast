@@ -31,6 +31,12 @@ interface RemoveEntryResult {
   name: string;
 }
 
+interface GitResult {
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+}
+
 interface PasswordGenerateOptions {
   kind: "password";
   length?: number;
@@ -286,6 +292,14 @@ export async function moveEntry(
   return parseJson<MoveEntryResult>(stdout);
 }
 
+export async function gitCommand(
+  args: string[],
+  storeDir: string,
+): Promise<GitResult> {
+  const stdout = await run(["--store-dir", storeDir, "git", "--json", ...args]);
+  return parseJson<GitResult>(stdout);
+}
+
 export async function removeEntry(
   entry: string,
   storeDir: string,
@@ -321,6 +335,7 @@ export type {
   GenerateEntryOptions,
   GenerateEntryResult,
   GenerateSecretResult,
+  GitResult,
   MoveEntryResult,
   OtpResult,
   RemoveEntryResult,

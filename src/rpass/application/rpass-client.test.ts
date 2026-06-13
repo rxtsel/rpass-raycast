@@ -7,6 +7,7 @@ import {
   generateEntry,
   generateOtp,
   generateSecret,
+  gitCommand,
   listEntries,
   moveEntry,
   removeEntry,
@@ -304,6 +305,26 @@ test("moveEntry calls rpass mv with JSON output", async () => {
       "archive/login",
       "--json",
     ],
+    stdin: "",
+  });
+});
+
+test("gitCommand calls rpass git with JSON output", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      stdout: "## main...origin/main\n",
+      stderr: "",
+      exit_code: 0,
+    }),
+  });
+
+  assert.deepEqual(await gitCommand(["status", "-sb"], "/tmp/store"), {
+    stdout: "## main...origin/main\n",
+    stderr: "",
+    exit_code: 0,
+  });
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: ["--store-dir", "/tmp/store", "git", "--json", "status", "-sb"],
     stdin: "",
   });
 });

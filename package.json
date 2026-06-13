@@ -40,6 +40,13 @@
       "title": "New Entry",
       "description": "Generate and insert a new password or passphrase.",
       "subtitle": "rPass"
+    },
+    {
+      "mode": "view",
+      "name": "sync-vault",
+      "title": "Sync Vault",
+      "description": "Inspect and sync the password store Git repository.",
+      "subtitle": "rPass"
     }
   ],
   "preferences": [

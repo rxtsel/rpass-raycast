@@ -19,6 +19,7 @@ import {
   filterVaultItemsByFolder,
   getVaultFolders,
 } from "../application/filter-vault-items";
+import SyncVault from "../../sync-vault";
 import { loadVaultItems } from "../application/load-vault-items";
 import { ALL_FOLDERS, type VaultItem } from "../domain/vault-item";
 import Content from "./content";
@@ -197,6 +198,11 @@ export default function Store({ storepath }: Props) {
                 icon={Icon.Pencil}
                 title="Edit Entry"
                 target={<EditEntry storepath={storepath} entry={item.entry} />}
+              />
+              <Action.Push
+                icon={Icon.ArrowClockwise}
+                title="Sync Vault"
+                target={<SyncVault />}
               />
               <Action
                 icon={Icon.Trash}
