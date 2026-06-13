@@ -32,6 +32,8 @@ Configure the extension preferences in Raycast:
 - **Default Action**: choose whether entry rows copy or paste by default.
 - **Clear Clipboard After**: automatically clear copied passwords after the selected timeout.
 
+When the selected password store has no `.gpg-id`, the extension shows an initialization form inside Vault or New Entry. Enter one or more GPG recipients, such as an email, key ID, or fingerprint; the extension runs `rpass init --json <recipient...>` for you.
+
 ## CLI integration contract
 
 The extension calls `rpass` with JSON output where available:

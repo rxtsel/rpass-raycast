@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
 import {
+  doctor,
   generateEntry,
   generateOtp,
   generateSecret,
   gitCommand,
+  initStore,
   listEntries,
   moveEntry,
   removeEntry,
@@ -246,6 +248,56 @@ test("generateSecret calls rpass generate dry-run without a store", async () => 
       "20",
       "--no-numbers",
       "--no-symbols",
+    ],
+    stdin: "",
+  });
+});
+
+test("doctor parses JSON report from a failing command", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      ok: false,
+      store_dir: "/tmp/store",
+      checks: [{ name: "gpg_id", ok: false, message: ".gpg-id not found" }],
+    }),
+    stderr: JSON.stringify({
+      error: { code: "doctor_failed", message: "doctor checks failed" },
+    }),
+    exitCode: 1,
+  });
+
+  assert.deepEqual(await doctor("/tmp/store"), {
+    ok: false,
+    store_dir: "/tmp/store",
+    checks: [{ name: "gpg_id", ok: false, message: ".gpg-id not found" }],
+  });
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: ["--store-dir", "/tmp/store", "doctor", "--json"],
+    stdin: "",
+  });
+});
+
+test("initStore calls rpass init with JSON output", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      path: ".gpg-id",
+      recipients: ["alice@example.invalid"],
+      removed: false,
+    }),
+  });
+
+  assert.deepEqual(await initStore(["alice@example.invalid"], "/tmp/store"), {
+    path: ".gpg-id",
+    recipients: ["alice@example.invalid"],
+    removed: false,
+  });
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: [
+      "--store-dir",
+      "/tmp/store",
+      "init",
+      "--json",
+      "alice@example.invalid",
     ],
     stdin: "",
   });

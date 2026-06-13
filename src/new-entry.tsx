@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { configureRpassClientFromPreferences } from "./rpass/application/configure-rpass-client";
 import {
+  doctor,
   generateSecret,
   listEntries,
   RpassError,
@@ -22,6 +23,7 @@ import { getEntryParentFolders } from "./vault/domain/entry-folders";
 import { resolveStorePath } from "./vault/application/store-path";
 import { copyPassword } from "./vault/presentation/clipboard";
 import checkInstall from "./vault/presentation/check-install";
+import SetupPasswordStore from "./vault/presentation/setup-password-store";
 
 const DEFAULT_PASSWORD_LENGTH = "14";
 const DEFAULT_WORDS = "4";
@@ -106,6 +108,7 @@ export default function Command() {
   const [additionalLines, setAdditionalLines] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [lastError, setLastError] = useState<string>();
+  const [setupRequired, setSetupRequired] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const entry = useMemo(
@@ -119,6 +122,18 @@ export default function Command() {
 
   useEffect(() => {
     let cancelled = false;
+    doctor(storepath)
+      .then((report) => {
+        if (!cancelled) {
+          setSetupRequired(
+            report.checks.some((check) => check.name === "gpg_id" && !check.ok),
+          );
+        }
+      })
+      .catch(() => {
+        // Older rpass versions may not support doctor; writes still surface setup errors.
+      });
+
     listEntries(storepath)
       .then((entries) => {
         if (!cancelled) setFolders(getEntryParentFolders(entries));
@@ -267,6 +282,7 @@ export default function Command() {
 
     setIsLoading(true);
     setLastError(undefined);
+    setSetupRequired(false);
     try {
       const content = [secret, additionalLines.trim()]
         .filter(Boolean)
@@ -278,6 +294,9 @@ export default function Command() {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
+      setSetupRequired(
+        error instanceof RpassError && error.code === "gpg_id_not_found",
+      );
       await showToast(Toast.Style.Failure, "Failed to Create Entry", message);
     } finally {
       setIsLoading(false);
@@ -329,6 +348,18 @@ export default function Command() {
             shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
             onSubmit={() => submit({ force: true })}
           />
+          {setupRequired ? (
+            <Action.Push
+              icon={Icon.Hammer}
+              title="Initialize Password Store"
+              target={
+                <SetupPasswordStore
+                  storepath={storepath}
+                  onDone={() => setSetupRequired(false)}
+                />
+              }
+            />
+          ) : null}
           {lastError ? (
             <Action.CopyToClipboard
               title="Copy Last Error"
@@ -338,6 +369,9 @@ export default function Command() {
         </ActionPanel>
       }
     >
+      {setupRequired ? (
+        <Form.Description text="This password store has no .gpg-id yet. Use Initialize Password Store before creating entries." />
+      ) : null}
       <Form.Dropdown
         id="kind"
         title="Type"

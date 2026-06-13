@@ -11,6 +11,7 @@ import {
 import { getFavicon } from "@raycast/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  doctor,
   listEntries,
   removeEntry,
   RpassError,
@@ -24,6 +25,7 @@ import { loadVaultItems } from "../application/load-vault-items";
 import { ALL_FOLDERS, type VaultItem } from "../domain/vault-item";
 import Content from "./content";
 import EditEntry from "./edit-entry";
+import SetupPasswordStore from "./setup-password-store";
 
 const FOLDER_TAG_COLOR = "#8E8E93";
 
@@ -56,6 +58,14 @@ function formatError(error: unknown): string {
   return String(error);
 }
 
+function needsPasswordStoreSetup(error: unknown): boolean {
+  return error instanceof RpassError && error.code === "gpg_id_not_found";
+}
+
+function hasMissingGpgId(report: Awaited<ReturnType<typeof doctor>>): boolean {
+  return report.checks.some((check) => check.name === "gpg_id" && !check.ok);
+}
+
 function FolderFilter({
   folders,
   selectedFolder,
@@ -86,15 +96,28 @@ export default function Store({ storepath }: Props) {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [selectedFolder, setSelectedFolder] = useState(ALL_FOLDERS);
   const [lastError, setLastError] = useState<string>();
+  const [setupRequired, setSetupRequired] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const load = useCallback(async () => {
     setIsLoading(true);
     setLastError(undefined);
     try {
-      setItems(await loadVaultItems(storepath, { listEntries }));
+      const loadedItems = await loadVaultItems(storepath, { listEntries });
+      setItems(loadedItems);
+      try {
+        const report = await doctor(storepath);
+        setSetupRequired(hasMissingGpgId(report));
+      } catch {
+        setSetupRequired(false);
+      }
     } catch (error) {
-      setLastError(formatError(error));
+      if (needsPasswordStoreSetup(error)) {
+        setSetupRequired(true);
+        setItems([]);
+      } else {
+        setLastError(formatError(error));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -160,6 +183,41 @@ export default function Store({ storepath }: Props) {
               <Action
                 title="Retry"
                 icon={Icon.ArrowClockwise}
+                onAction={load}
+              />
+              <Action.Push
+                icon={Icon.Hammer}
+                title="Initialize Password Store"
+                target={
+                  <SetupPasswordStore storepath={storepath} onDone={load} />
+                }
+              />
+            </ActionPanel>
+          }
+        />
+      </List>
+    );
+  }
+
+  if (setupRequired) {
+    return (
+      <List isLoading={isLoading} searchBarPlaceholder="Search vault...">
+        <List.Item
+          icon={Icon.ExclamationMark}
+          title="Password Store Is Not Initialized"
+          subtitle="Initialize it with a GPG recipient before saving passwords"
+          actions={
+            <ActionPanel>
+              <Action.Push
+                icon={Icon.Hammer}
+                title="Initialize Password Store"
+                target={
+                  <SetupPasswordStore storepath={storepath} onDone={load} />
+                }
+              />
+              <Action
+                icon={Icon.ArrowClockwise}
+                title="Refresh"
                 onAction={load}
               />
             </ActionPanel>

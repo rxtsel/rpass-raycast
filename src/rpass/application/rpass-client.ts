@@ -31,6 +31,18 @@ interface RemoveEntryResult {
   name: string;
 }
 
+interface InitStoreResult {
+  path: string;
+  recipients: string[];
+  removed: boolean;
+}
+
+interface DoctorReport {
+  ok: boolean;
+  store_dir: string;
+  checks: { name: string; ok: boolean; message: string }[];
+}
+
 interface GitResult {
   stdout: string;
   stderr: string;
@@ -106,7 +118,10 @@ function parseRpassError(stderr: string, code: number | null): RpassError {
   return new RpassError("rpass_failed", "rpass command failed", details);
 }
 
-async function run(args: string[], stdin?: string): Promise<string> {
+async function runRaw(
+  args: string[],
+  stdin?: string,
+): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const executable = resolveExecutable();
 
   return new Promise((resolve, reject) => {
@@ -140,11 +155,7 @@ async function run(args: string[], stdin?: string): Promise<string> {
     });
     child.on("close", (code) => {
       clearTimeout(timeout);
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(parseRpassError(stderr, code));
-      }
+      resolve({ stdout, stderr, code });
     });
 
     if (stdin !== undefined && child.stdin) {
@@ -154,6 +165,12 @@ async function run(args: string[], stdin?: string): Promise<string> {
       child.stdin.end(stdin);
     }
   });
+}
+
+async function run(args: string[], stdin?: string): Promise<string> {
+  const { stdout, stderr, code } = await runRaw(args, stdin);
+  if (code === 0) return stdout;
+  throw parseRpassError(stderr, code);
 }
 
 export async function listEntries(storeDir: string): Promise<string[]> {
@@ -263,6 +280,32 @@ export async function generateSecret(
   return parseJson<GenerateSecretResult>(stdout);
 }
 
+export async function doctor(storeDir: string): Promise<DoctorReport> {
+  const { stdout, stderr, code } = await runRaw([
+    "--store-dir",
+    storeDir,
+    "doctor",
+    "--json",
+  ]);
+  if (stdout.trim()) return parseJson<DoctorReport>(stdout);
+  if (code === 0) return parseJson<DoctorReport>(stdout);
+  throw parseRpassError(stderr, code);
+}
+
+export async function initStore(
+  recipients: string[],
+  storeDir: string,
+): Promise<InitStoreResult> {
+  const stdout = await run([
+    "--store-dir",
+    storeDir,
+    "init",
+    "--json",
+    ...recipients,
+  ]);
+  return parseJson<InitStoreResult>(stdout);
+}
+
 export async function writeEntry(
   entry: string,
   storeDir: string,
@@ -333,9 +376,11 @@ export async function version(): Promise<void> {
 
 export type {
   GenerateEntryOptions,
+  DoctorReport,
   GenerateEntryResult,
   GenerateSecretResult,
   GitResult,
+  InitStoreResult,
   MoveEntryResult,
   OtpResult,
   RemoveEntryResult,
