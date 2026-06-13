@@ -20,7 +20,7 @@ import {
   type OtpResult,
 } from "../../rpass/application/rpass-client";
 import { copyPassword, pastePassword } from "./clipboard";
-import { appendGpgTimeoutHelp } from "./gpg-timeout-help";
+import { formatGpgAwareError } from "./gpg-timeout-help";
 
 interface Props {
   entry: string;
@@ -70,7 +70,7 @@ export default function OtpRow({
       setExpiresAt(Date.now() + data.remaining_seconds * 1000);
     } catch (error) {
       if (requestId === requestIdRef.current) {
-        const message = appendGpgTimeoutHelp("Failed to generate TOTP", error);
+        const message = formatGpgAwareError("Failed to generate TOTP", error);
         showToast(Toast.Style.Failure, "Failed to Generate TOTP", message);
       }
     } finally {

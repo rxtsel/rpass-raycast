@@ -121,6 +121,7 @@ function parseRpassError(stderr: string, code: number | null): RpassError {
 async function runRaw(
   args: string[],
   stdin?: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const executable = resolveExecutable();
 
@@ -131,7 +132,7 @@ async function runRaw(
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
       reject(new RpassError("rpass_timeout", "rpass timed out"));
-    }, 10000);
+    }, options.timeoutMs ?? 10000);
 
     if (!child.stdout || !child.stderr) {
       clearTimeout(timeout);
@@ -167,8 +168,12 @@ async function runRaw(
   });
 }
 
-async function run(args: string[], stdin?: string): Promise<string> {
-  const { stdout, stderr, code } = await runRaw(args, stdin);
+async function run(
+  args: string[],
+  stdin?: string,
+  options: { timeoutMs?: number } = {},
+): Promise<string> {
+  const { stdout, stderr, code } = await runRaw(args, stdin, options);
   if (code === 0) return stdout;
   throw parseRpassError(stderr, code);
 }
@@ -217,7 +222,9 @@ export async function showEntryContent(
   if (passphrase !== undefined) args.push("--passphrase-stdin");
   args.push(entry);
 
-  const stdout = await run(args, passphrase);
+  const stdout = await run(args, passphrase, {
+    timeoutMs: passphrase !== undefined ? 60000 : 10000,
+  });
   return parseJson<ShowEntryJson>(stdout);
 }
 
@@ -366,7 +373,9 @@ export async function generateOtp(
   const args = ["--store-dir", storeDir, "otp", "--json"];
   if (passphrase !== undefined) args.push("--passphrase-stdin");
   args.push(entry);
-  const stdout = await run(args, passphrase);
+  const stdout = await run(args, passphrase, {
+    timeoutMs: passphrase !== undefined ? 60000 : 10000,
+  });
   return parseJson<OtpResult>(stdout);
 }
 

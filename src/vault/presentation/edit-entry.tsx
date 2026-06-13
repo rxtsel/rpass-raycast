@@ -20,8 +20,8 @@ import {
 } from "../../rpass/application/rpass-client";
 import { getEntryParentFolders } from "../domain/entry-folders";
 import {
-  appendGpgTimeoutHelp,
-  GPG_TIMEOUT_HELP,
+  formatGpgAwareError,
+  GpgTimeoutHelp,
   isGpgTimeoutOrPinentryError,
 } from "./gpg-timeout-help";
 
@@ -57,7 +57,7 @@ function formatError(error: unknown): string {
         ? error.message
         : String(error);
 
-  return appendGpgTimeoutHelp(message, error);
+  return formatGpgAwareError(message, error);
 }
 
 function parsePositiveInteger(value: string): number | undefined {
@@ -146,8 +146,10 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const [words, setWords] = useState(DEFAULT_WORDS);
   const [capitalize, setCapitalize] = useState(false);
   const [appendNumber, setAppendNumber] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [needsPassphrase, setNeedsPassphrase] = useState(false);
+  const [isLoading, setIsLoading] = useState(passphrase !== undefined);
+  const [needsPassphrase, setNeedsPassphrase] = useState(
+    passphrase === undefined,
+  );
   const [unlockPassphrase, setUnlockPassphrase] = useState<string>();
   const [passphraseInput, setPassphraseInput] = useState("");
   const [passphraseVisible, setPassphraseVisible] = useState(false);
@@ -176,6 +178,12 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   }, [entry, storepath]);
 
   useEffect(() => {
+    if (passphrase === undefined && unlockPassphrase === undefined) {
+      setNeedsPassphrase(true);
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
@@ -228,6 +236,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             const message = formatError(error);
             setLastError(message);
             setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
+            setErrors((current) => ({ ...current, passphrase: message }));
             await showToast(
               Toast.Style.Failure,
               "Failed to Load Entry",
@@ -422,6 +431,18 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
               shortcut={{ modifiers: ["opt"], key: "e" }}
               onAction={() => setPassphraseVisible((visible) => !visible)}
             />
+            {lastErrorHasGpgHelp ? (
+              <Action.Push
+                title="Show Setup Instructions"
+                target={<GpgTimeoutHelp />}
+              />
+            ) : null}
+            {lastError ? (
+              <Action.CopyToClipboard
+                title="Copy Last Error"
+                content={lastError}
+              />
+            ) : null}
           </ActionPanel>
         }
       >
@@ -475,9 +496,9 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             onAction={regenerateSecret}
           />
           {lastErrorHasGpgHelp ? (
-            <Action.CopyToClipboard
-              title="Copy GPG Timeout Help"
-              content={GPG_TIMEOUT_HELP}
+            <Action.Push
+              title="Show Setup Instructions"
+              target={<GpgTimeoutHelp />}
             />
           ) : null}
           {lastError ? (

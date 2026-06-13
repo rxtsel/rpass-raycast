@@ -8,7 +8,7 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { RpassError, showEntry } from "../../rpass/application/rpass-client";
 import {
   parseVaultEntryRows,
@@ -17,8 +17,8 @@ import {
 import { copyPassword, pastePassword } from "./clipboard";
 import EditEntry from "./edit-entry";
 import {
-  appendGpgTimeoutHelp,
-  GPG_TIMEOUT_HELP,
+  formatGpgAwareError,
+  GpgTimeoutHelp,
   isGpgTimeoutOrPinentryError,
 } from "./gpg-timeout-help";
 import { getOptionIcon } from "./icons";
@@ -118,13 +118,13 @@ export default function Content({ storepath, entry }: Props) {
   const { defaultAction } = getPreferenceValues<Preferences>();
   const [rows, setRows] = useState<VaultEntryRow[]>([]);
   const [passphrase, setPassphrase] = useState<string>();
-  const [needsPassphrase, setNeedsPassphrase] = useState(false);
+  const [needsPassphrase, setNeedsPassphrase] = useState(true);
   const [passphraseInput, setPassphraseInput] = useState("");
   const [passphraseError, setPassphraseError] = useState<string>();
   const [passphraseVisible, setPassphraseVisible] = useState(false);
   const [lastError, setLastError] = useState<string>();
   const [lastErrorHasGpgHelp, setLastErrorHasGpgHelp] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   async function load(passphrase?: string) {
     setIsLoading(true);
@@ -149,10 +149,11 @@ export default function Content({ storepath, entry }: Props) {
               ? error.message
               : String(error);
         const hasGpgHelp = isGpgTimeoutOrPinentryError(error);
-        const message = appendGpgTimeoutHelp(baseMessage, error);
+        const message = formatGpgAwareError(baseMessage, error);
         setLastError(message);
         setLastErrorHasGpgHelp(hasGpgHelp);
-        showToast(Toast.Style.Failure, "Failed to decrypt entry", message);
+        setPassphraseError(message);
+        showToast(Toast.Style.Failure, "Failed to Decrypt Entry", message);
       }
     } finally {
       setIsLoading(false);
@@ -179,10 +180,6 @@ export default function Content({ storepath, entry }: Props) {
     load(values.passphrase);
   }
 
-  useEffect(() => {
-    load();
-  }, [entry, storepath]);
-
   if (needsPassphrase) {
     return (
       <Form
@@ -196,6 +193,15 @@ export default function Content({ storepath, entry }: Props) {
               shortcut={{ modifiers: ["opt"], key: "e" }}
               onAction={() => setPassphraseVisible((visible) => !visible)}
             />
+            {lastErrorHasGpgHelp ? (
+              <Action.Push
+                title="Show Setup Instructions"
+                target={<GpgTimeoutHelp />}
+              />
+            ) : null}
+            {lastError ? (
+              <Action.CopyToClipboard title="Copy Error" content={lastError} />
+            ) : null}
           </ActionPanel>
         }
       >
@@ -235,9 +241,9 @@ export default function Content({ storepath, entry }: Props) {
             <ActionPanel>
               <Action.CopyToClipboard title="Copy Error" content={lastError} />
               {lastErrorHasGpgHelp ? (
-                <Action.CopyToClipboard
-                  title="Copy GPG Timeout Help"
-                  content={GPG_TIMEOUT_HELP}
+                <Action.Push
+                  title="Show Setup Instructions"
+                  target={<GpgTimeoutHelp />}
                 />
               ) : null}
               <Action
