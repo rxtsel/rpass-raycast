@@ -65,6 +65,13 @@ function normalizeEntryName(folder: string, name: string): string {
   return parts.join("/");
 }
 
+function needsPasswordStoreSetup(error: unknown): boolean {
+  return (
+    error instanceof RpassError &&
+    (error.code === "gpg_id_not_found" || error.code === "store_not_found")
+  );
+}
+
 function validateEntryName(name: string): string | undefined {
   const trimmed = name.trim();
   if (!trimmed) return "Entry name is required";
@@ -126,7 +133,11 @@ export default function Command() {
       .then((report) => {
         if (!cancelled) {
           setSetupRequired(
-            report.checks.some((check) => check.name === "gpg_id" && !check.ok),
+            report.checks.some(
+              (check) =>
+                (check.name === "store_directory" || check.name === "gpg_id") &&
+                !check.ok,
+            ),
           );
         }
       })
@@ -140,9 +151,13 @@ export default function Command() {
       })
       .catch((error) => {
         if (!cancelled) {
-          const message = formatError(error);
-          setLastError(message);
-          showToast(Toast.Style.Failure, "Failed to Load Folders", message);
+          if (needsPasswordStoreSetup(error)) {
+            setSetupRequired(true);
+          } else {
+            const message = formatError(error);
+            setLastError(message);
+            showToast(Toast.Style.Failure, "Failed to Load Folders", message);
+          }
         }
       });
 
@@ -294,9 +309,7 @@ export default function Command() {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
-      setSetupRequired(
-        error instanceof RpassError && error.code === "gpg_id_not_found",
-      );
+      setSetupRequired(needsPasswordStoreSetup(error));
       await showToast(Toast.Style.Failure, "Failed to Create Entry", message);
     } finally {
       setIsLoading(false);

@@ -59,11 +59,20 @@ function formatError(error: unknown): string {
 }
 
 function needsPasswordStoreSetup(error: unknown): boolean {
-  return error instanceof RpassError && error.code === "gpg_id_not_found";
+  return (
+    error instanceof RpassError &&
+    (error.code === "gpg_id_not_found" || error.code === "store_not_found")
+  );
 }
 
-function hasMissingGpgId(report: Awaited<ReturnType<typeof doctor>>): boolean {
-  return report.checks.some((check) => check.name === "gpg_id" && !check.ok);
+function needsPasswordStoreSetupFromDoctor(
+  report: Awaited<ReturnType<typeof doctor>>,
+): boolean {
+  return report.checks.some(
+    (check) =>
+      (check.name === "store_directory" || check.name === "gpg_id") &&
+      !check.ok,
+  );
 }
 
 function FolderFilter({
@@ -107,7 +116,7 @@ export default function Store({ storepath }: Props) {
       setItems(loadedItems);
       try {
         const report = await doctor(storepath);
-        setSetupRequired(hasMissingGpgId(report));
+        setSetupRequired(needsPasswordStoreSetupFromDoctor(report));
       } catch {
         setSetupRequired(false);
       }

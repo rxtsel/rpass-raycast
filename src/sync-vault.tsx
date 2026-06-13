@@ -18,6 +18,7 @@ import {
 } from "./rpass/application/rpass-client";
 import { resolveStorePath } from "./vault/application/store-path";
 import checkInstall from "./vault/presentation/check-install";
+import SetupPasswordStore from "./vault/presentation/setup-password-store";
 
 interface CommitItem {
   hash: string;
@@ -72,6 +73,10 @@ function getPrimaryRef(refs: string): string | undefined {
     .find((ref) => ref && !ref.startsWith("HEAD"));
 }
 
+function needsPasswordStoreSetup(error: unknown): boolean {
+  return error instanceof RpassError && error.code === "store_not_found";
+}
+
 function getRepositoryNotFound(error: unknown): boolean {
   return (
     error instanceof RpassError && error.code === "git_repository_not_found"
@@ -94,12 +99,14 @@ export default function Command() {
   const [status, setStatus] = useState("");
   const [branch, setBranch] = useState<string>();
   const [commits, setCommits] = useState<CommitItem[]>([]);
+  const [setupRequired, setSetupRequired] = useState(false);
   const [lastOutput, setLastOutput] = useState<string>();
   const [lastError, setLastError] = useState<string>();
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setLastError(undefined);
+    setSetupRequired(false);
     try {
       const statusResult = await gitCommand(["status", "-sb"], storepath);
       const statusText = statusResult.stdout || statusResult.stderr;
@@ -146,7 +153,12 @@ export default function Command() {
         }
       }
     } catch (error) {
-      if (getRepositoryNotFound(error)) {
+      if (needsPasswordStoreSetup(error)) {
+        setStatus("");
+        setBranch(undefined);
+        setCommits([]);
+        setSetupRequired(true);
+      } else if (getRepositoryNotFound(error)) {
         setStatus("");
         setBranch(undefined);
         setCommits([]);
@@ -192,6 +204,7 @@ export default function Command() {
 
     setIsLoading(true);
     setLastError(undefined);
+    setSetupRequired(false);
     try {
       const result = await gitCommand(args, storepath);
       setLastOutput(formatCommandOutput(result));
@@ -199,6 +212,9 @@ export default function Command() {
       await showToast(Toast.Style.Success, successTitle);
       await refresh();
     } catch (error) {
+      if (needsPasswordStoreSetup(error)) {
+        setSetupRequired(true);
+      }
       const message = formatError(error);
       setLastError(message);
       await showToast(Toast.Style.Failure, title, message);
@@ -210,7 +226,14 @@ export default function Command() {
   const actions = (
     <ActionPanel>
       <Action icon={Icon.ArrowClockwise} title="Refresh" onAction={refresh} />
-      {isRepository === false ? (
+      {setupRequired ? (
+        <Action.Push
+          icon={Icon.Hammer}
+          title="Initialize Password Store"
+          target={<SetupPasswordStore storepath={storepath} onDone={refresh} />}
+        />
+      ) : null}
+      {isRepository === false && !setupRequired ? (
         <Action
           icon={Icon.Hammer}
           title="Initialize Git"
@@ -223,7 +246,7 @@ export default function Command() {
           }
         />
       ) : null}
-      {isRepository !== false ? (
+      {isRepository !== false && !setupRequired ? (
         <>
           <Action
             icon={Icon.Download}
@@ -266,6 +289,20 @@ export default function Command() {
       ) : null}
     </ActionPanel>
   );
+
+  if (setupRequired) {
+    return (
+      <List isLoading={isLoading} searchBarPlaceholder="Sync vault...">
+        <List.Item
+          icon={Icon.ExclamationMark}
+          title="Password Store Is Not Initialized"
+          subtitle="Initialize it with a GPG recipient before syncing"
+          accessories={[{ text: storepath }]}
+          actions={actions}
+        />
+      </List>
+    );
+  }
 
   if (isRepository === false) {
     return (
