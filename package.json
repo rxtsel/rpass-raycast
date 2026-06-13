@@ -2,7 +2,12 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "rpass",
   "description": "Manage your pass-compatible password store with rpass. Cross-platform GPG encryption and TOTP support.",
+  "categories": [
+    "Productivity",
+    "Security"
+  ],
   "license": "MIT",
+  "author": "rxtsel",
   "scripts": {
     "dev": "ray develop",
     "lint": "ray lint",
@@ -48,6 +53,10 @@
       "description": "Inspect and sync the password store Git repository.",
       "subtitle": "rPass"
     }
+  ],
+  "platforms": [
+    "Windows",
+    "macOS"
   ],
   "preferences": [
     {
@@ -117,14 +126,5 @@
       ]
     }
   ],
-  "title": "RPass",
-  "author": "rxtsel",
-  "platforms": [
-    "Windows",
-    "macOS"
-  ],
-  "categories": [
-    "Productivity",
-    "Security"
-  ]
+  "title": "rPass"
 }

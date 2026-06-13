@@ -3,7 +3,7 @@
 
   <br/>
 
-# RPass Vault
+# rPass Vault
 
 Manage your pass-compatible password store directly from Raycast
 
