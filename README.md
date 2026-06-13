@@ -1,44 +1,88 @@
-# RPass Raycast Extension
+<div align="center">
+  <img src="assets/extension-icon.png" width="128" height="128" />
 
-Browse a pass-compatible password store from Raycast using the `rpass` CLI. The extension can list vault entries, decrypt an entry, copy or paste passwords and metadata, show TOTP codes when an entry contains an OTP URI, and generate new password or passphrase entries.
+  <br/>
+
+# RPass Vault
+
+Manage your pass-compatible password store directly from Raycast
+
+🔎 &nbsp; Search your vault &nbsp; 📋 &nbsp; Copy and paste fields &nbsp; 🔐 &nbsp; Generate passwords and passphrases &nbsp; ⏱️ &nbsp; Use TOTP codes &nbsp; 🔄 &nbsp; Sync with Git
+
+</div>
+
+<br/>
 
 ## Requirements
 
-- Raycast
-- Node.js and npm for development
-- The `rpass` CLI installed and available on `PATH`, or configured in the extension preferences
-- A GPG-backed password-store-compatible repository, such as `~/.password-store`
+- [Raycast](https://www.raycast.com/)
+- [`rpass` CLI](https://github.com/rxtsel/rpass-cli), installed and available on `PATH` or configured in the extension preferences
+- [GnuPG](https://gnupg.org/) / Gpg4win for decrypting and encrypting entries
+- A [password-store](https://www.passwordstore.org/)-compatible vault, usually `~/.password-store`
+- Git is optional, only needed if you want to sync your password store with `rpass git ...`
 
-`rpass` keeps the password-store shape: entries are stored as `<entry-name>.gpg`, the password is the first decrypted line, and extra metadata remains plain text lines.
+`rpass` uses the standard password-store format: entries are encrypted files such as `example/login.gpg`, recipients are stored in `.gpg-id`, and decrypted entries keep the password on the first line.
 
 ## Setup
 
-Install dependencies:
+### Install `rpass`
+
+Install the CLI from crates.io:
 
 ```bash
-npm install
+cargo install rpass-cli
 ```
 
-Run the extension in Raycast development mode:
+Or download a binary from the [`rpass-cli` releases](https://github.com/rxtsel/rpass-cli/releases).
+
+If `rpass` is not on your `PATH`, set its absolute path in the extension preference **rpass Executable Path**.
+
+### Select your password store
+
+By default, the extension uses:
+
+```text
+~/.password-store
+```
+
+You can choose a different folder in the extension preference **Password Store Directory**.
+
+If the selected store does not exist or has no `.gpg-id`, the extension will show a setup form. Enter one or more GPG recipients, such as an email, key ID, or fingerprint. The extension initializes the store with:
 
 ```bash
-npm run dev
+rpass init <recipient...>
 ```
 
-Configure the extension preferences in Raycast:
+### Optional Git sync
 
-- **rpass Executable Path**: optional path to the `rpass` binary. Leave empty when `rpass` is on `PATH`.
-- **Password Store Directory**: optional path to your password store. Defaults to `~/.password-store`.
-- **Default Action**: choose whether entry rows copy or paste by default.
-- **Clear Clipboard After**: automatically clear copied passwords after the selected timeout.
+If your password store is a Git repository, write commands are committed automatically by `rpass`.
 
-When the selected password store has no `.gpg-id`, the extension shows an initialization form inside Vault or New Entry. Enter one or more GPG recipients, such as an email, key ID, or fingerprint; the extension runs `rpass init --json <recipient...>` for you.
+To initialize Git history for a new store, run:
+
+```bash
+rpass git init
+```
+
+Then configure your remote as usual:
+
+```bash
+rpass git remote add origin <repo-url>
+rpass git push -u origin main
+```
+
+## Usage
+
+The extension provides commands for common password-store workflows:
+
+- **Vault**: browse, search, decrypt, copy, paste, edit, move, or delete entries.
+- **New Entry**: generate a password or passphrase and save it to the store.
+- **Sync Vault**: inspect Git status/history and run pull or push.
+
+When opening an encrypted entry, the extension may ask for your GPG passphrase. It uses `rpass --passphrase-stdin` so the passphrase is passed through stdin, not through command-line arguments.
 
 ## Avoiding GPG Timeouts
 
-If decrypting entries times out, GPG may be waiting for pinentry.
-
-For non-interactive unlocks, enable loopback pinentry.
+If decrypting entries times out, GPG may be waiting for pinentry. For non-interactive unlocks, enable loopback pinentry.
 
 ### macOS / Linux
 
@@ -70,48 +114,32 @@ gpgconf --kill gpg-agent
 
 This does not change GPG cache durations. It only allows `rpass --passphrase-stdin` to pass the passphrase directly to GPG instead of opening a pinentry UI.
 
-## CLI integration contract
+## Security
 
-The extension calls `rpass` with JSON output where available:
+The extension relies on the [`rpass` CLI](https://github.com/rxtsel/rpass-cli) and GnuPG, so the same security model applies:
+
+- passwords remain in your local password-store-compatible repository;
+- entries are decrypted only when you explicitly open or use them;
+- vault listing uses `rpass list --json` and does not decrypt entries in bulk;
+- GPG passphrases are never passed as command-line arguments;
+- generated or decrypted secrets are not stored by the extension;
+- the extension only stores a short-lived non-secret marker that GPG was recently unlocked, so it can try the already-unlocked `gpg-agent` before prompting again.
+
+## Local Development
+
+Install dependencies:
 
 ```bash
-rpass list --json
-rpass show example/login --json
-rpass otp example/login --json
-rpass generate example/login --json
-rpass generate example/passphrase --phrase --json
+npm install
 ```
 
-Entries are addressed without the `.gpg` suffix. Use `example/login`, not `example/login.gpg`.
-
-For non-interactive passphrase flows, integrations must use:
+Run the extension in Raycast development mode:
 
 ```bash
-rpass show example/login --json --passphrase-stdin
-rpass otp example/login --json --passphrase-stdin
+npm run dev
 ```
 
-Do **not** use or add `--passphrase <value>`. Command-line arguments can leak through shell history, process listings, logs, crash reports, or telemetry.
-
-JSON behavior expected by the extension:
-
-- success: stdout contains one complete JSON value and stderr is empty;
-- failure: stderr contains one JSON error object and stdout is empty.
-
-Error shape:
-
-```json
-{
-  "error": {
-    "code": "example_code",
-    "message": "human-readable message"
-  }
-}
-```
-
-## Development
-
-Run these checks before declaring work done:
+Run checks before declaring work done:
 
 ```bash
 npx tsc --noEmit
@@ -125,7 +153,7 @@ Optional build check:
 npm run build
 ```
 
-## Test data safety
+## Test Data Safety
 
 Use dummy examples only in tests, docs, issues, and screenshots:
 
