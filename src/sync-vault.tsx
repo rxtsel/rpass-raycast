@@ -78,6 +78,14 @@ function getRepositoryNotFound(error: unknown): boolean {
   );
 }
 
+function getEmptyRepositoryLogError(error: unknown): boolean {
+  return (
+    error instanceof RpassError &&
+    error.code === "git_failed" &&
+    error.message.includes("does not have any commits yet")
+  );
+}
+
 export default function Command() {
   configureRpassClientFromPreferences();
   const storepath = resolveStorePath();
@@ -119,16 +127,24 @@ export default function Command() {
         unpushedHashes = new Set();
       }
 
-      const logResult = await gitCommand(
-        [
-          "log",
-          "--pretty=format:%H%x1f%h%x1f%D%x1f%s%x1f%cr",
-          "--decorate=short",
-          "-50",
-        ],
-        storepath,
-      );
-      setCommits(parseLog(logResult.stdout, unpushedHashes));
+      try {
+        const logResult = await gitCommand(
+          [
+            "log",
+            "--pretty=format:%H%x1f%h%x1f%D%x1f%s%x1f%cr",
+            "--decorate=short",
+            "-50",
+          ],
+          storepath,
+        );
+        setCommits(parseLog(logResult.stdout, unpushedHashes));
+      } catch (error) {
+        if (getEmptyRepositoryLogError(error)) {
+          setCommits([]);
+        } else {
+          throw error;
+        }
+      }
     } catch (error) {
       if (getRepositoryNotFound(error)) {
         setStatus("");
