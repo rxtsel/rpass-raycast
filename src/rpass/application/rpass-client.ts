@@ -71,6 +71,10 @@ interface PassphraseGenerateOptions {
 
 type GenerateEntryOptions = PasswordGenerateOptions | PassphraseGenerateOptions;
 
+const DEFAULT_RPASS_TIMEOUT_MS = 10000;
+const UNLOCK_WITH_PASSPHRASE_TIMEOUT_MS = 60000;
+export const OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS = 3000;
+
 let executablePathOverride: string | undefined;
 
 function resolveExecutable(): string {
@@ -121,6 +125,7 @@ function parseRpassError(stderr: string, code: number | null): RpassError {
 async function runRaw(
   args: string[],
   stdin?: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
   const executable = resolveExecutable();
 
@@ -131,7 +136,7 @@ async function runRaw(
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
       reject(new RpassError("rpass_timeout", "rpass timed out"));
-    }, 10000);
+    }, options.timeoutMs ?? DEFAULT_RPASS_TIMEOUT_MS);
 
     if (!child.stdout || !child.stderr) {
       clearTimeout(timeout);
@@ -167,8 +172,12 @@ async function runRaw(
   });
 }
 
-async function run(args: string[], stdin?: string): Promise<string> {
-  const { stdout, stderr, code } = await runRaw(args, stdin);
+async function run(
+  args: string[],
+  stdin?: string,
+  options: { timeoutMs?: number } = {},
+): Promise<string> {
+  const { stdout, stderr, code } = await runRaw(args, stdin, options);
   if (code === 0) return stdout;
   throw parseRpassError(stderr, code);
 }
@@ -212,12 +221,19 @@ export async function showEntryContent(
   entry: string,
   storeDir: string,
   passphrase?: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<ShowEntryJson> {
   const args = ["--store-dir", storeDir, "show", "--json"];
   if (passphrase !== undefined) args.push("--passphrase-stdin");
   args.push(entry);
 
-  const stdout = await run(args, passphrase);
+  const stdout = await run(args, passphrase, {
+    timeoutMs:
+      options.timeoutMs ??
+      (passphrase !== undefined
+        ? UNLOCK_WITH_PASSPHRASE_TIMEOUT_MS
+        : DEFAULT_RPASS_TIMEOUT_MS),
+  });
   return parseJson<ShowEntryJson>(stdout);
 }
 
@@ -225,9 +241,10 @@ export async function showEntry(
   entry: string,
   storeDir: string,
   passphrase?: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<string> {
   return formatShowEntryOutput(
-    await showEntryContent(entry, storeDir, passphrase),
+    await showEntryContent(entry, storeDir, passphrase, options),
   );
 }
 
@@ -366,7 +383,12 @@ export async function generateOtp(
   const args = ["--store-dir", storeDir, "otp", "--json"];
   if (passphrase !== undefined) args.push("--passphrase-stdin");
   args.push(entry);
-  const stdout = await run(args, passphrase);
+  const stdout = await run(args, passphrase, {
+    timeoutMs:
+      passphrase !== undefined
+        ? UNLOCK_WITH_PASSPHRASE_TIMEOUT_MS
+        : DEFAULT_RPASS_TIMEOUT_MS,
+  });
   return parseJson<OtpResult>(stdout);
 }
 

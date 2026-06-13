@@ -34,6 +34,42 @@ Configure the extension preferences in Raycast:
 
 When the selected password store has no `.gpg-id`, the extension shows an initialization form inside Vault or New Entry. Enter one or more GPG recipients, such as an email, key ID, or fingerprint; the extension runs `rpass init --json <recipient...>` for you.
 
+## Avoiding GPG Timeouts
+
+If decrypting entries times out, GPG may be waiting for pinentry.
+
+For non-interactive unlocks, enable loopback pinentry.
+
+### macOS / Linux
+
+Edit `~/.gnupg/gpg-agent.conf` and add:
+
+```text
+allow-loopback-pinentry
+```
+
+Restart gpg-agent:
+
+```bash
+gpgconf --kill gpg-agent
+```
+
+### Windows
+
+Edit `%APPDATA%\gnupg\gpg-agent.conf` and add:
+
+```text
+allow-loopback-pinentry
+```
+
+Restart gpg-agent:
+
+```bash
+gpgconf --kill gpg-agent
+```
+
+This does not change GPG cache durations. It only allows `rpass --passphrase-stdin` to pass the passphrase directly to GPG instead of opening a pinentry UI.
+
 ## CLI integration contract
 
 The extension calls `rpass` with JSON output where available:

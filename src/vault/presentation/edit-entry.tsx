@@ -14,11 +14,22 @@ import {
   generateSecret,
   listEntries,
   moveEntry,
+  OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS,
   RpassError,
   showEntryContent,
   writeEntry,
 } from "../../rpass/application/rpass-client";
+import {
+  forgetStoreUnlock,
+  markStoreUnlocked,
+  shouldTryAgentUnlock,
+} from "../application/gpg-unlock-session";
 import { getEntryParentFolders } from "../domain/entry-folders";
+import {
+  formatGpgAwareError,
+  GpgTimeoutHelp,
+  isGpgTimeoutOrPinentryError,
+} from "./gpg-timeout-help";
 
 const DEFAULT_PASSWORD_LENGTH = "14";
 const DEFAULT_WORDS = "4";
@@ -45,12 +56,14 @@ interface PassphraseValues {
 }
 
 function formatError(error: unknown): string {
-  if (error instanceof RpassError) {
-    return `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`;
-  }
+  const message =
+    error instanceof RpassError
+      ? `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`
+      : error instanceof Error
+        ? error.message
+        : String(error);
 
-  if (error instanceof Error) return error.message;
-  return String(error);
+  return formatGpgAwareError(message, error);
 }
 
 function parsePositiveInteger(value: string): number | undefined {
@@ -139,12 +152,17 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const [words, setWords] = useState(DEFAULT_WORDS);
   const [capitalize, setCapitalize] = useState(false);
   const [appendNumber, setAppendNumber] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [needsPassphrase, setNeedsPassphrase] = useState(false);
+  const [isLoading, setIsLoading] = useState(
+    passphrase !== undefined || shouldTryAgentUnlock(storepath),
+  );
+  const [needsPassphrase, setNeedsPassphrase] = useState(
+    passphrase === undefined && !shouldTryAgentUnlock(storepath),
+  );
   const [unlockPassphrase, setUnlockPassphrase] = useState<string>();
   const [passphraseInput, setPassphraseInput] = useState("");
   const [passphraseVisible, setPassphraseVisible] = useState(false);
   const [lastError, setLastError] = useState<string>();
+  const [lastErrorHasGpgHelp, setLastErrorHasGpgHelp] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const didMountOptionsRef = useRef(false);
   const skipNextOptionsRegenerateRef = useRef(false);
@@ -167,56 +185,89 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     };
   }, [entry, storepath]);
 
+  function shouldPromptForPassphrase(error: unknown): boolean {
+    return (
+      (error instanceof RpassError &&
+        error.code === "gpg_passphrase_required") ||
+      isGpgTimeoutOrPinentryError(error)
+    );
+  }
+
+  function applyLoadedContent(
+    content: Awaited<ReturnType<typeof showEntryContent>>,
+  ) {
+    setPassword(content.password);
+    skipNextOptionsRegenerateRef.current = true;
+    const inferredKind = inferSecretKind(content.password);
+    setKind(inferredKind);
+    if (inferredKind === "phrase") {
+      const options = inferPassphraseOptions(content.password);
+      setWords(options.words);
+      setCapitalize(options.capitalize);
+      setAppendNumber(options.number);
+    } else {
+      setLowercase(true);
+      setUppercase(true);
+      setNumbers(true);
+      setSymbols(true);
+    }
+    setNeedsPassphrase(false);
+    setLastError(undefined);
+    setLastErrorHasGpgHelp(false);
+    setAdditionalLines(
+      [
+        ...content.fields.map((field) => `${field.name}: ${field.value}`),
+        content.otp_uri,
+        ...content.extra_lines,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
   useEffect(() => {
+    const submittedPassphrase = unlockPassphrase ?? passphrase;
+    const canTryAgent =
+      submittedPassphrase === undefined && shouldTryAgentUnlock(storepath);
+
+    if (submittedPassphrase === undefined && !canTryAgent) {
+      setNeedsPassphrase(true);
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
       setIsLoading(true);
       setLastError(undefined);
+      setLastErrorHasGpgHelp(false);
       try {
         const content = await showEntryContent(
           entry,
           storepath,
-          unlockPassphrase ?? passphrase,
+          submittedPassphrase,
+          canTryAgent
+            ? { timeoutMs: OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS }
+            : undefined,
         );
         if (cancelled) return;
 
-        setPassword(content.password);
-        skipNextOptionsRegenerateRef.current = true;
-        const inferredKind = inferSecretKind(content.password);
-        setKind(inferredKind);
-        if (inferredKind === "phrase") {
-          const options = inferPassphraseOptions(content.password);
-          setWords(options.words);
-          setCapitalize(options.capitalize);
-          setAppendNumber(options.number);
-        } else {
-          setLowercase(true);
-          setUppercase(true);
-          setNumbers(true);
-          setSymbols(true);
+        if (submittedPassphrase !== undefined) {
+          markStoreUnlocked(storepath);
         }
-        setNeedsPassphrase(false);
-        setLastError(undefined);
-        setAdditionalLines(
-          [
-            ...content.fields.map((field) => `${field.name}: ${field.value}`),
-            content.otp_uri,
-            ...content.extra_lines,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        );
+        applyLoadedContent(content);
       } catch (error) {
         if (!cancelled) {
-          if (
-            error instanceof RpassError &&
-            error.code === "gpg_passphrase_required"
-          ) {
+          if (canTryAgent) forgetStoreUnlock(storepath);
+
+          if (shouldPromptForPassphrase(error)) {
             setNeedsPassphrase(true);
           } else {
             const message = formatError(error);
             setLastError(message);
+            setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
+            setErrors((current) => ({ ...current, passphrase: message }));
             await showToast(
               Toast.Style.Failure,
               "Failed to Load Entry",
@@ -289,6 +340,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
     setIsLoading(true);
     setLastError(undefined);
+    setLastErrorHasGpgHelp(false);
     try {
       const result = await generateSecret(
         kind === "phrase"
@@ -311,6 +363,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
+      setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
       await showToast(
         Toast.Style.Failure,
         "Failed to Generate Secret",
@@ -371,6 +424,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
     setIsLoading(true);
     setLastError(undefined);
+    setLastErrorHasGpgHelp(false);
     try {
       const content = [password, additionalLines.trim()]
         .filter(Boolean)
@@ -388,6 +442,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
+      setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
       await showToast(Toast.Style.Failure, "Failed to Update Entry", message);
     } finally {
       setIsLoading(false);
@@ -407,6 +462,18 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
               shortcut={{ modifiers: ["opt"], key: "e" }}
               onAction={() => setPassphraseVisible((visible) => !visible)}
             />
+            {lastErrorHasGpgHelp ? (
+              <Action.Push
+                title="Show Setup Instructions"
+                target={<GpgTimeoutHelp />}
+              />
+            ) : null}
+            {lastError ? (
+              <Action.CopyToClipboard
+                title="Copy Last Error"
+                content={lastError}
+              />
+            ) : null}
           </ActionPanel>
         }
       >
@@ -459,6 +526,12 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
             onAction={regenerateSecret}
           />
+          {lastErrorHasGpgHelp ? (
+            <Action.Push
+              title="Show Setup Instructions"
+              target={<GpgTimeoutHelp />}
+            />
+          ) : null}
           {lastError ? (
             <Action.CopyToClipboard
               title="Copy Last Error"
