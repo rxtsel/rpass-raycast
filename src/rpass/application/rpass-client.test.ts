@@ -186,6 +186,31 @@ test("showEntryContent returns strict JSON output", async () => {
   });
 });
 
+test("showEntryContent can try agent unlock without passphrase stdin", async () => {
+  configureFakeCommand({
+    stdout: JSON.stringify({
+      password: "dummy-password",
+      fields: [],
+      extra_lines: [],
+    }),
+  });
+
+  assert.deepEqual(
+    await showEntryContent("example/login", "/tmp/store", undefined, {
+      timeoutMs: 3000,
+    }),
+    {
+      password: "dummy-password",
+      fields: [],
+      extra_lines: [],
+    },
+  );
+  assert.deepEqual(await readFakeCommandResult(), {
+    args: ["--store-dir", "/tmp/store", "show", "--json", "example/login"],
+    stdin: "",
+  });
+});
+
 test("generateEntry calls rpass generate for passphrase options", async () => {
   configureFakeCommand({
     stdout: JSON.stringify({

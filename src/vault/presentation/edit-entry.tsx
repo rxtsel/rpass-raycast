@@ -14,10 +14,16 @@ import {
   generateSecret,
   listEntries,
   moveEntry,
+  OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS,
   RpassError,
   showEntryContent,
   writeEntry,
 } from "../../rpass/application/rpass-client";
+import {
+  forgetStoreUnlock,
+  markStoreUnlocked,
+  shouldTryAgentUnlock,
+} from "../application/gpg-unlock-session";
 import { getEntryParentFolders } from "../domain/entry-folders";
 import {
   formatGpgAwareError,
@@ -146,9 +152,11 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const [words, setWords] = useState(DEFAULT_WORDS);
   const [capitalize, setCapitalize] = useState(false);
   const [appendNumber, setAppendNumber] = useState(false);
-  const [isLoading, setIsLoading] = useState(passphrase !== undefined);
+  const [isLoading, setIsLoading] = useState(
+    passphrase !== undefined || shouldTryAgentUnlock(storepath),
+  );
   const [needsPassphrase, setNeedsPassphrase] = useState(
-    passphrase === undefined,
+    passphrase === undefined && !shouldTryAgentUnlock(storepath),
   );
   const [unlockPassphrase, setUnlockPassphrase] = useState<string>();
   const [passphraseInput, setPassphraseInput] = useState("");
@@ -177,8 +185,52 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     };
   }, [entry, storepath]);
 
+  function shouldPromptForPassphrase(error: unknown): boolean {
+    return (
+      (error instanceof RpassError &&
+        error.code === "gpg_passphrase_required") ||
+      isGpgTimeoutOrPinentryError(error)
+    );
+  }
+
+  function applyLoadedContent(
+    content: Awaited<ReturnType<typeof showEntryContent>>,
+  ) {
+    setPassword(content.password);
+    skipNextOptionsRegenerateRef.current = true;
+    const inferredKind = inferSecretKind(content.password);
+    setKind(inferredKind);
+    if (inferredKind === "phrase") {
+      const options = inferPassphraseOptions(content.password);
+      setWords(options.words);
+      setCapitalize(options.capitalize);
+      setAppendNumber(options.number);
+    } else {
+      setLowercase(true);
+      setUppercase(true);
+      setNumbers(true);
+      setSymbols(true);
+    }
+    setNeedsPassphrase(false);
+    setLastError(undefined);
+    setLastErrorHasGpgHelp(false);
+    setAdditionalLines(
+      [
+        ...content.fields.map((field) => `${field.name}: ${field.value}`),
+        content.otp_uri,
+        ...content.extra_lines,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+
   useEffect(() => {
-    if (passphrase === undefined && unlockPassphrase === undefined) {
+    const submittedPassphrase = unlockPassphrase ?? passphrase;
+    const canTryAgent =
+      submittedPassphrase === undefined && shouldTryAgentUnlock(storepath);
+
+    if (submittedPassphrase === undefined && !canTryAgent) {
       setNeedsPassphrase(true);
       setIsLoading(false);
       return;
@@ -194,43 +246,22 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         const content = await showEntryContent(
           entry,
           storepath,
-          unlockPassphrase ?? passphrase,
+          submittedPassphrase,
+          canTryAgent
+            ? { timeoutMs: OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS }
+            : undefined,
         );
         if (cancelled) return;
 
-        setPassword(content.password);
-        skipNextOptionsRegenerateRef.current = true;
-        const inferredKind = inferSecretKind(content.password);
-        setKind(inferredKind);
-        if (inferredKind === "phrase") {
-          const options = inferPassphraseOptions(content.password);
-          setWords(options.words);
-          setCapitalize(options.capitalize);
-          setAppendNumber(options.number);
-        } else {
-          setLowercase(true);
-          setUppercase(true);
-          setNumbers(true);
-          setSymbols(true);
+        if (submittedPassphrase !== undefined) {
+          markStoreUnlocked(storepath);
         }
-        setNeedsPassphrase(false);
-        setLastError(undefined);
-        setLastErrorHasGpgHelp(false);
-        setAdditionalLines(
-          [
-            ...content.fields.map((field) => `${field.name}: ${field.value}`),
-            content.otp_uri,
-            ...content.extra_lines,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        );
+        applyLoadedContent(content);
       } catch (error) {
         if (!cancelled) {
-          if (
-            error instanceof RpassError &&
-            error.code === "gpg_passphrase_required"
-          ) {
+          if (canTryAgent) forgetStoreUnlock(storepath);
+
+          if (shouldPromptForPassphrase(error)) {
             setNeedsPassphrase(true);
           } else {
             const message = formatError(error);

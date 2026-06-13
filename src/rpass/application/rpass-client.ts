@@ -71,6 +71,10 @@ interface PassphraseGenerateOptions {
 
 type GenerateEntryOptions = PasswordGenerateOptions | PassphraseGenerateOptions;
 
+const DEFAULT_RPASS_TIMEOUT_MS = 10000;
+const UNLOCK_WITH_PASSPHRASE_TIMEOUT_MS = 60000;
+export const OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS = 3000;
+
 let executablePathOverride: string | undefined;
 
 function resolveExecutable(): string {
@@ -132,7 +136,7 @@ async function runRaw(
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
       reject(new RpassError("rpass_timeout", "rpass timed out"));
-    }, options.timeoutMs ?? 10000);
+    }, options.timeoutMs ?? DEFAULT_RPASS_TIMEOUT_MS);
 
     if (!child.stdout || !child.stderr) {
       clearTimeout(timeout);
@@ -217,13 +221,18 @@ export async function showEntryContent(
   entry: string,
   storeDir: string,
   passphrase?: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<ShowEntryJson> {
   const args = ["--store-dir", storeDir, "show", "--json"];
   if (passphrase !== undefined) args.push("--passphrase-stdin");
   args.push(entry);
 
   const stdout = await run(args, passphrase, {
-    timeoutMs: passphrase !== undefined ? 60000 : 10000,
+    timeoutMs:
+      options.timeoutMs ??
+      (passphrase !== undefined
+        ? UNLOCK_WITH_PASSPHRASE_TIMEOUT_MS
+        : DEFAULT_RPASS_TIMEOUT_MS),
   });
   return parseJson<ShowEntryJson>(stdout);
 }
@@ -232,9 +241,10 @@ export async function showEntry(
   entry: string,
   storeDir: string,
   passphrase?: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<string> {
   return formatShowEntryOutput(
-    await showEntryContent(entry, storeDir, passphrase),
+    await showEntryContent(entry, storeDir, passphrase, options),
   );
 }
 
@@ -374,7 +384,10 @@ export async function generateOtp(
   if (passphrase !== undefined) args.push("--passphrase-stdin");
   args.push(entry);
   const stdout = await run(args, passphrase, {
-    timeoutMs: passphrase !== undefined ? 60000 : 10000,
+    timeoutMs:
+      passphrase !== undefined
+        ? UNLOCK_WITH_PASSPHRASE_TIMEOUT_MS
+        : DEFAULT_RPASS_TIMEOUT_MS,
   });
   return parseJson<OtpResult>(stdout);
 }

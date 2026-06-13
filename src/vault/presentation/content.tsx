@@ -8,13 +8,22 @@ import {
   showToast,
   Toast,
 } from "@raycast/api";
-import { type ReactNode, useMemo, useState } from "react";
-import { RpassError, showEntry } from "../../rpass/application/rpass-client";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS,
+  RpassError,
+  showEntry,
+} from "../../rpass/application/rpass-client";
 import {
   parseVaultEntryRows,
   type VaultEntryRow,
 } from "../domain/vault-entry-content";
 import { copyPassword, pastePassword } from "./clipboard";
+import {
+  forgetStoreUnlock,
+  markStoreUnlocked,
+  shouldTryAgentUnlock,
+} from "../application/gpg-unlock-session";
 import EditEntry from "./edit-entry";
 import {
   formatGpgAwareError,
@@ -118,40 +127,80 @@ export default function Content({ storepath, entry }: Props) {
   const { defaultAction } = getPreferenceValues<Preferences>();
   const [rows, setRows] = useState<VaultEntryRow[]>([]);
   const [passphrase, setPassphrase] = useState<string>();
-  const [needsPassphrase, setNeedsPassphrase] = useState(true);
+  const [needsPassphrase, setNeedsPassphrase] = useState(
+    !shouldTryAgentUnlock(storepath),
+  );
   const [passphraseInput, setPassphraseInput] = useState("");
   const [passphraseError, setPassphraseError] = useState<string>();
   const [passphraseVisible, setPassphraseVisible] = useState(false);
   const [lastError, setLastError] = useState<string>();
   const [lastErrorHasGpgHelp, setLastErrorHasGpgHelp] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(shouldTryAgentUnlock(storepath));
 
-  async function load(passphrase?: string) {
+  function clearDecryptError() {
+    setLastError(undefined);
+    setLastErrorHasGpgHelp(false);
+    setPassphraseError(undefined);
+  }
+
+  function formatDecryptError(error: unknown): string {
+    const baseMessage =
+      error instanceof RpassError
+        ? `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`
+        : error instanceof Error
+          ? error.message
+          : String(error);
+
+    return formatGpgAwareError(baseMessage, error);
+  }
+
+  function shouldPromptForPassphrase(error: unknown) {
+    return (
+      (error instanceof RpassError &&
+        error.code === "gpg_passphrase_required") ||
+      isGpgTimeoutOrPinentryError(error)
+    );
+  }
+
+  function applyLoadedContent(content: string, unlockedPassphrase?: string) {
+    setRows(parseVaultEntryRows(content));
+    setPassphrase(unlockedPassphrase);
+    setNeedsPassphrase(false);
+    clearDecryptError();
+  }
+
+  async function loadWithSubmittedPassphrase(submittedPassphrase: string) {
     setIsLoading(true);
     try {
-      const content = await showEntry(entry, storepath, passphrase);
-      setRows(parseVaultEntryRows(content));
-      setPassphrase(passphrase);
-      setNeedsPassphrase(false);
-      setLastError(undefined);
-      setLastErrorHasGpgHelp(false);
+      const content = await showEntry(entry, storepath, submittedPassphrase);
+      markStoreUnlocked(storepath);
+      applyLoadedContent(content, submittedPassphrase);
     } catch (error) {
-      if (
-        error instanceof RpassError &&
-        error.code === "gpg_passphrase_required"
-      ) {
+      const message = formatDecryptError(error);
+      setLastError(message);
+      setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
+      setPassphraseError(message);
+      showToast(Toast.Style.Failure, "Failed to Decrypt Entry", message);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function tryLoadWithAgent() {
+    setIsLoading(true);
+    try {
+      const content = await showEntry(entry, storepath, undefined, {
+        timeoutMs: OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS,
+      });
+      applyLoadedContent(content);
+    } catch (error) {
+      forgetStoreUnlock(storepath);
+      if (shouldPromptForPassphrase(error)) {
         setNeedsPassphrase(true);
       } else {
-        const baseMessage =
-          error instanceof RpassError
-            ? `${error.code}: ${error.message}${error.details ? `\n\n${error.details}` : ""}`
-            : error instanceof Error
-              ? error.message
-              : String(error);
-        const hasGpgHelp = isGpgTimeoutOrPinentryError(error);
-        const message = formatGpgAwareError(baseMessage, error);
+        const message = formatDecryptError(error);
         setLastError(message);
-        setLastErrorHasGpgHelp(hasGpgHelp);
+        setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
         setPassphraseError(message);
         showToast(Toast.Style.Failure, "Failed to Decrypt Entry", message);
       }
@@ -159,6 +208,12 @@ export default function Content({ storepath, entry }: Props) {
       setIsLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (shouldTryAgentUnlock(storepath)) {
+      tryLoadWithAgent();
+    }
+  }, [entry, storepath]);
 
   function updatePassphraseInput(value: string) {
     setPassphraseInput(value);
@@ -177,7 +232,7 @@ export default function Content({ storepath, entry }: Props) {
 
   function unlock(values: PassphraseValues) {
     if (!validatePassphrase(values.passphrase)) return;
-    load(values.passphrase);
+    loadWithSubmittedPassphrase(values.passphrase);
   }
 
   if (needsPassphrase) {
@@ -249,7 +304,11 @@ export default function Content({ storepath, entry }: Props) {
               <Action
                 title="Retry"
                 icon={Icon.ArrowClockwise}
-                onAction={() => load(passphrase)}
+                onAction={() =>
+                  passphrase
+                    ? loadWithSubmittedPassphrase(passphrase)
+                    : tryLoadWithAgent()
+                }
               />
             </ActionPanel>
           }
