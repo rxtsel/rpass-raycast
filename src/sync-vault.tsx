@@ -2,9 +2,10 @@ import {
   Action,
   ActionPanel,
   Alert,
+  Color,
   confirmAlert,
-  Detail,
   Icon,
+  List,
   showToast,
   Toast,
 } from "@raycast/api";
@@ -18,6 +19,15 @@ import {
 import { resolveStorePath } from "./vault/application/store-path";
 import checkInstall from "./vault/presentation/check-install";
 
+interface CommitItem {
+  hash: string;
+  shortHash: string;
+  refs: string;
+  subject: string;
+  relativeDate: string;
+  pushed: boolean;
+}
+
 function formatError(error: unknown): string {
   if (error instanceof RpassError) {
     return [error.message, error.details].filter(Boolean).join("\n\n");
@@ -26,58 +36,46 @@ function formatError(error: unknown): string {
 }
 
 function formatCommandOutput(result: GitResult): string {
-  return [
-    result.stdout.trim()
-      ? `### stdout\n\n\`\`\`text\n${result.stdout.trimEnd()}\n\`\`\``
-      : undefined,
-    result.stderr.trim()
-      ? `### stderr\n\n\`\`\`text\n${result.stderr.trimEnd()}\n\`\`\``
-      : undefined,
-    `Exit code: ${result.exit_code}`,
-  ]
+  return [result.stdout.trimEnd(), result.stderr.trimEnd()]
     .filter(Boolean)
     .join("\n\n");
 }
 
-function statusMarkdown({
-  storepath,
-  status,
-  lastOutput,
-  lastError,
-  isRepository,
-}: {
-  storepath: string;
-  status?: string;
-  lastOutput?: string;
-  lastError?: string;
-  isRepository?: boolean;
-}): string {
-  const sections = [`# Sync Vault`, `Store: \`${storepath}\``];
+function parseStatusBranch(status: string): string | undefined {
+  const firstLine = status.split("\n")[0]?.trim();
+  return firstLine?.startsWith("## ") ? firstLine.slice(3) : undefined;
+}
 
-  if (isRepository === false) {
-    sections.push(
-      "## Status",
-      "Password store is not a Git repository.",
-      "Run **Initialize Git** to start tracking it.",
-    );
-  } else {
-    sections.push(
-      "## Status",
-      status?.trim()
-        ? `\`\`\`text\n${status.trimEnd()}\n\`\`\``
-        : "No Git status loaded yet.",
-    );
-  }
+function parseLog(output: string, unpushedHashes: Set<string>): CommitItem[] {
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [hash, shortHash, refs, subject, relativeDate] = line.split("\x1f");
+      return {
+        hash,
+        shortHash,
+        refs,
+        subject,
+        relativeDate,
+        pushed: !unpushedHashes.has(hash),
+      };
+    })
+    .filter((commit) => commit.hash && commit.shortHash && commit.subject);
+}
 
-  if (lastOutput) {
-    sections.push("## Last Output", lastOutput);
-  }
+function getPrimaryRef(refs: string): string | undefined {
+  return refs
+    .split(",")
+    .map((ref) => ref.trim())
+    .find((ref) => ref && !ref.startsWith("HEAD"));
+}
 
-  if (lastError) {
-    sections.push("## Last Error", `\`\`\`text\n${lastError}\n\`\`\``);
-  }
-
-  return sections.join("\n\n");
+function getRepositoryNotFound(error: unknown): boolean {
+  return (
+    error instanceof RpassError && error.code === "git_repository_not_found"
+  );
 }
 
 export default function Command() {
@@ -85,7 +83,9 @@ export default function Command() {
   const storepath = resolveStorePath();
   const [isLoading, setIsLoading] = useState(false);
   const [isRepository, setIsRepository] = useState<boolean | undefined>();
-  const [status, setStatus] = useState<string>();
+  const [status, setStatus] = useState("");
+  const [branch, setBranch] = useState<string>();
+  const [commits, setCommits] = useState<CommitItem[]>([]);
   const [lastOutput, setLastOutput] = useState<string>();
   const [lastError, setLastError] = useState<string>();
 
@@ -93,24 +93,52 @@ export default function Command() {
     setIsLoading(true);
     setLastError(undefined);
     try {
-      const result = await gitCommand(["status", "-sb"], storepath);
-      setStatus(result.stdout || result.stderr);
+      const statusResult = await gitCommand(["status", "-sb"], storepath);
+      const statusText = statusResult.stdout || statusResult.stderr;
+      setStatus(statusText);
+      setBranch(parseStatusBranch(statusText));
       setIsRepository(true);
+
+      let unpushedHashes = new Set<string>();
+      try {
+        const upstream = await gitCommand(
+          ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+          storepath,
+        );
+        const upstreamName = upstream.stdout.trim();
+        if (upstreamName) {
+          const unpushed = await gitCommand(
+            ["log", `${upstreamName}..HEAD`, "--pretty=format:%H"],
+            storepath,
+          );
+          unpushedHashes = new Set(
+            unpushed.stdout.split("\n").map((line) => line.trim()),
+          );
+        }
+      } catch {
+        unpushedHashes = new Set();
+      }
+
+      const logResult = await gitCommand(
+        [
+          "log",
+          "--pretty=format:%H%x1f%h%x1f%D%x1f%s%x1f%cr",
+          "--decorate=short",
+          "-50",
+        ],
+        storepath,
+      );
+      setCommits(parseLog(logResult.stdout, unpushedHashes));
     } catch (error) {
-      if (
-        error instanceof RpassError &&
-        error.code === "git_repository_not_found"
-      ) {
-        setStatus(undefined);
+      if (getRepositoryNotFound(error)) {
+        setStatus("");
+        setBranch(undefined);
+        setCommits([]);
         setIsRepository(false);
       } else {
         const message = formatError(error);
         setLastError(message);
-        await showToast(
-          Toast.Style.Failure,
-          "Failed to Load Git Status",
-          message,
-        );
+        await showToast(Toast.Style.Failure, "Failed to Load Git Log", message);
       }
     } finally {
       setIsLoading(false);
@@ -163,100 +191,132 @@ export default function Command() {
     }
   }
 
-  const markdown = statusMarkdown({
-    storepath,
-    status,
-    lastOutput,
-    lastError,
-    isRepository,
-  });
+  const actions = (
+    <ActionPanel>
+      <Action icon={Icon.ArrowClockwise} title="Refresh" onAction={refresh} />
+      {isRepository === false ? (
+        <Action
+          icon={Icon.Hammer}
+          title="Initialize Git"
+          onAction={() =>
+            runGitAction({
+              title: "Failed to Initialize Git",
+              successTitle: "Git Initialized",
+              args: ["init"],
+            })
+          }
+        />
+      ) : null}
+      {isRepository !== false ? (
+        <>
+          <Action
+            icon={Icon.Download}
+            title="Pull Vault"
+            onAction={() =>
+              runGitAction({
+                title: "Failed to Pull Vault",
+                successTitle: "Vault Pulled",
+                args: ["pull"],
+                confirm: {
+                  title: "Pull Vault?",
+                  message: "Run git pull in the password store?",
+                  actionTitle: "Pull Vault",
+                },
+              })
+            }
+          />
+          <Action
+            icon={Icon.Upload}
+            title="Push Vault"
+            onAction={() =>
+              runGitAction({
+                title: "Failed to Push Vault",
+                successTitle: "Vault Pushed",
+                args: ["push"],
+                confirm: {
+                  title: "Push Vault?",
+                  message: "Run git push in the password store?",
+                  actionTitle: "Push Vault",
+                },
+              })
+            }
+          />
+        </>
+      ) : null}
+      {status ? (
+        <Action.CopyToClipboard title="Copy Status" content={status} />
+      ) : null}
+      {lastOutput ? (
+        <Action.CopyToClipboard title="Copy Last Output" content={lastOutput} />
+      ) : null}
+      {lastError ? (
+        <Action.CopyToClipboard title="Copy Last Error" content={lastError} />
+      ) : null}
+    </ActionPanel>
+  );
+
+  if (isRepository === false) {
+    return (
+      <List isLoading={isLoading} searchBarPlaceholder="Sync vault...">
+        <List.Item
+          icon={Icon.ExclamationMark}
+          title="Password store is not a Git repository"
+          subtitle="Run Initialize Git to start tracking it"
+          accessories={[{ text: storepath }]}
+          actions={actions}
+        />
+      </List>
+    );
+  }
+
+  if (lastError && commits.length === 0) {
+    return (
+      <List isLoading={isLoading} searchBarPlaceholder="Sync vault...">
+        <List.Item
+          icon={Icon.ExclamationMark}
+          title="Failed to Load Git Log"
+          subtitle={lastError}
+          actions={actions}
+        />
+      </List>
+    );
+  }
 
   return (
-    <Detail
+    <List
       isLoading={isLoading}
-      markdown={markdown}
-      actions={
-        <ActionPanel>
-          <Action
-            icon={Icon.ArrowClockwise}
-            title="Refresh"
-            onAction={refresh}
+      searchBarPlaceholder="Filter by title, branch, or commit..."
+    >
+      <List.Section title={branch ?? "Git Log"} subtitle={storepath}>
+        {commits.length === 0 ? (
+          <List.Item
+            icon={{ source: Icon.Circle, tintColor: Color.SecondaryText }}
+            title="No commits found"
+            subtitle={status || undefined}
+            actions={actions}
           />
-          {isRepository === false ? (
-            <Action
-              icon={Icon.Hammer}
-              title="Initialize Git"
-              onAction={() =>
-                runGitAction({
-                  title: "Failed to Initialize Git",
-                  successTitle: "Git Initialized",
-                  args: ["init"],
-                })
-              }
-            />
-          ) : null}
-          {isRepository !== false ? (
-            <>
-              <Action
-                icon={Icon.Download}
-                title="Pull Vault"
-                onAction={() =>
-                  runGitAction({
-                    title: "Failed to Pull Vault",
-                    successTitle: "Vault Pulled",
-                    args: ["pull"],
-                    confirm: {
-                      title: "Pull Vault?",
-                      message: "Run git pull in the password store?",
-                      actionTitle: "Pull Vault",
-                    },
-                  })
-                }
+        ) : (
+          commits.map((commit) => {
+            const primaryRef = getPrimaryRef(commit.refs);
+            return (
+              <List.Item
+                key={commit.hash}
+                icon={{
+                  source: commit.pushed ? Icon.CheckCircle : Icon.Circle,
+                  tintColor: commit.pushed ? Color.Green : Color.SecondaryText,
+                }}
+                title={commit.subject}
+                subtitle={commit.relativeDate}
+                accessories={[
+                  ...(primaryRef ? [{ tag: primaryRef }] : []),
+                  { text: commit.shortHash },
+                ]}
+                actions={actions}
               />
-              <Action
-                icon={Icon.Upload}
-                title="Push Vault"
-                onAction={() =>
-                  runGitAction({
-                    title: "Failed to Push Vault",
-                    successTitle: "Vault Pushed",
-                    args: ["push"],
-                    confirm: {
-                      title: "Push Vault?",
-                      message: "Run git push in the password store?",
-                      actionTitle: "Push Vault",
-                    },
-                  })
-                }
-              />
-              <Action
-                icon={Icon.Clock}
-                title="Show Recent Log"
-                onAction={() =>
-                  runGitAction({
-                    title: "Failed to Load Git Log",
-                    successTitle: "Git Log Loaded",
-                    args: ["log", "--oneline", "-20"],
-                  })
-                }
-              />
-            </>
-          ) : null}
-          <Action.CopyToClipboard title="Copy Status" content={status ?? ""} />
-          {lastOutput ? (
-            <Action.CopyToClipboard
-              title="Copy Last Output"
-              content={lastOutput}
-            />
-          ) : null}
-          {lastError ? (
-            <Action.CopyToClipboard
-              title="Copy Last Error"
-              content={lastError}
-            />
-          ) : null}
-        </ActionPanel>
-      }
-    />
+            );
+          })
+        )}
+      </List.Section>
+    </List>
   );
 }
