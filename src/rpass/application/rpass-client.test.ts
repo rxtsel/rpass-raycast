@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
@@ -486,6 +493,32 @@ test("invalid JSON stdout rejects with rpass_invalid_json", async () => {
     assert.equal(error.code, "rpass_invalid_json");
     return true;
   });
+});
+
+test("discovers rpass from the common Cargo bin when no path is configured", async () => {
+  const originalHome = process.env.HOME;
+  const cargoBin = join(tempDir, ".cargo", "bin");
+  const cargoRpass = join(cargoBin, "rpass");
+  await mkdir(cargoBin, { recursive: true });
+  await writeFile(cargoRpass, await readFile(fakeExecutable, "utf8"));
+  await chmod(cargoRpass, 0o755);
+  process.env.HOME = tempDir;
+  setRpassExecutablePathForTests(undefined);
+  configureFakeCommand({ stdout: JSON.stringify(["example/login"]) });
+
+  try {
+    assert.deepEqual(await listEntries("/tmp/store"), ["example/login"]);
+    assert.deepEqual(await readFakeCommandResult(), {
+      args: ["--store-dir", "/tmp/store", "list", "--json"],
+      stdin: "",
+    });
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  }
 });
 
 test("missing executable rejects with rpass_spawn_failed", async () => {

@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 interface OtpResult {
   name: string;
@@ -77,8 +80,24 @@ export const OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS = 3000;
 
 let executablePathOverride: string | undefined;
 
+function getExecutableCandidates(): string[] {
+  const home = homedir();
+  return [
+    home ? join(home, ".cargo", "bin", "rpass") : undefined,
+    "/opt/homebrew/bin/rpass",
+    "/usr/local/bin/rpass",
+    "/usr/bin/rpass",
+  ].filter((candidate): candidate is string => Boolean(candidate));
+}
+
 function resolveExecutable(): string {
-  return executablePathOverride?.trim() || "rpass";
+  const configuredPath = executablePathOverride?.trim();
+  if (configuredPath) return configuredPath;
+
+  return (
+    getExecutableCandidates().find((candidate) => existsSync(candidate)) ||
+    "rpass"
+  );
 }
 
 export function setRpassExecutablePath(path: string | undefined): void {

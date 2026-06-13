@@ -35,7 +35,11 @@ cargo install rpass-cli
 
 Or download a binary from the [`rpass-cli` releases](https://github.com/rxtsel/rpass-cli/releases).
 
-If `rpass` is not on your `PATH`, set its absolute path in the extension preference **rpass Executable Path**.
+Raycast may not inherit the same `PATH` as your shell. The extension automatically checks common locations such as `~/.cargo/bin/rpass`, `/opt/homebrew/bin/rpass`, and `/usr/local/bin/rpass`. If it still cannot find `rpass`, set its absolute path in the extension preference **rpass Executable Path**. For Cargo installs on macOS, this is usually:
+
+```text
+/Users/<you>/.cargo/bin/rpass
+```
 
 ### Select your password store
 
