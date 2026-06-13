@@ -15,15 +15,15 @@ Manage your pass-compatible password store directly from Raycast
 
 ## Requirements
 
-- [Raycast](https://www.raycast.com/)
-- [`rpass` CLI](https://github.com/rxtsel/rpass-cli), installed and available on `PATH` or configured in the extension preferences
-- [GnuPG](https://gnupg.org/) / Gpg4win for decrypting and encrypting entries
-- A [password-store](https://www.passwordstore.org/)-compatible vault, usually `~/.password-store`
-- Git is optional, only needed if you want to sync your password store with `rpass git ...`
+The extension needs a local GPG installation because `rpass` encrypts and decrypts entries on your machine:
 
-`rpass` uses the standard password-store format: entries are encrypted files such as `example/login.gpg`, recipients are stored in `.gpg-id`, and decrypted entries keep the password on the first line.
+- macOS / Linux: [GnuPG](https://gnupg.org/)
+- Windows: [Gpg4win](https://www.gpg4win.org/)
+- Optional: [Git](https://git-scm.com/) if you want to sync your vault with `rpass git ...`
 
 ## Setup
+
+This is a [Raycast](https://www.raycast.com/) extension that uses the [`rpass` CLI](https://github.com/rxtsel/rpass-cli) under the hood.
 
 ### Install `rpass`
 
@@ -38,6 +38,8 @@ Or download a binary from the [`rpass-cli` releases](https://github.com/rxtsel/r
 If `rpass` is not on your `PATH`, set its absolute path in the extension preference **rpass Executable Path**.
 
 ### Select your password store
+
+`rpass` uses the standard [password-store](https://www.passwordstore.org/) format: entries are encrypted files such as `example/login.gpg`, recipients are stored in `.gpg-id`, and decrypted entries keep the password on the first line.
 
 By default, the extension uses:
 
