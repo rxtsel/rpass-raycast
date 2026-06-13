@@ -339,6 +339,15 @@ export default function Command() {
     appendNumber,
   ]);
 
+  if (setupRequired) {
+    return (
+      <SetupPasswordStore
+        storepath={storepath}
+        onDone={() => setSetupRequired(false)}
+      />
+    );
+  }
+
   return (
     <Form
       isLoading={isLoading}
@@ -361,18 +370,6 @@ export default function Command() {
             shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
             onSubmit={() => submit({ force: true })}
           />
-          {setupRequired ? (
-            <Action.Push
-              icon={Icon.Hammer}
-              title="Initialize Password Store"
-              target={
-                <SetupPasswordStore
-                  storepath={storepath}
-                  onDone={() => setSetupRequired(false)}
-                />
-              }
-            />
-          ) : null}
           {lastError ? (
             <Action.CopyToClipboard
               title="Copy Last Error"
@@ -382,9 +379,6 @@ export default function Command() {
         </ActionPanel>
       }
     >
-      {setupRequired ? (
-        <Form.Description text="This password store has no .gpg-id yet. Use Initialize Password Store before creating entries." />
-      ) : null}
       <Form.Dropdown
         id="kind"
         title="Type"

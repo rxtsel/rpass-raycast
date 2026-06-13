@@ -179,6 +179,10 @@ export default function Store({ storepath }: Props) {
     [items, selectedFolder],
   );
 
+  if (setupRequired) {
+    return <SetupPasswordStore storepath={storepath} onDone={load} />;
+  }
+
   if (lastError) {
     return (
       <List isLoading={isLoading}>
@@ -198,36 +202,12 @@ export default function Store({ storepath }: Props) {
                 icon={Icon.Hammer}
                 title="Initialize Password Store"
                 target={
-                  <SetupPasswordStore storepath={storepath} onDone={load} />
+                  <SetupPasswordStore
+                    storepath={storepath}
+                    onDone={load}
+                    popOnDone
+                  />
                 }
-              />
-            </ActionPanel>
-          }
-        />
-      </List>
-    );
-  }
-
-  if (setupRequired) {
-    return (
-      <List isLoading={isLoading} searchBarPlaceholder="Search vault...">
-        <List.Item
-          icon={Icon.ExclamationMark}
-          title="Password Store Is Not Initialized"
-          subtitle="Initialize it with a GPG recipient before saving passwords"
-          actions={
-            <ActionPanel>
-              <Action.Push
-                icon={Icon.Hammer}
-                title="Initialize Password Store"
-                target={
-                  <SetupPasswordStore storepath={storepath} onDone={load} />
-                }
-              />
-              <Action
-                icon={Icon.ArrowClockwise}
-                title="Refresh"
-                onAction={load}
               />
             </ActionPanel>
           }

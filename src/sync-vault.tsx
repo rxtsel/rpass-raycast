@@ -230,7 +230,13 @@ export default function Command() {
         <Action.Push
           icon={Icon.Hammer}
           title="Initialize Password Store"
-          target={<SetupPasswordStore storepath={storepath} onDone={refresh} />}
+          target={
+            <SetupPasswordStore
+              storepath={storepath}
+              onDone={refresh}
+              popOnDone
+            />
+          }
         />
       ) : null}
       {isRepository === false && !setupRequired ? (
@@ -291,17 +297,7 @@ export default function Command() {
   );
 
   if (setupRequired) {
-    return (
-      <List isLoading={isLoading} searchBarPlaceholder="Sync vault...">
-        <List.Item
-          icon={Icon.ExclamationMark}
-          title="Password Store Is Not Initialized"
-          subtitle="Initialize it with a GPG recipient before syncing"
-          accessories={[{ text: storepath }]}
-          actions={actions}
-        />
-      </List>
-    );
+    return <SetupPasswordStore storepath={storepath} onDone={refresh} />;
   }
 
   if (isRepository === false) {

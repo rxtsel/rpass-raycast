@@ -13,6 +13,7 @@ import { initStore, RpassError } from "../../rpass/application/rpass-client";
 interface Props {
   storepath: string;
   onDone?(): void | Promise<void>;
+  popOnDone?: boolean;
 }
 
 interface Values {
@@ -35,7 +36,11 @@ function parseRecipients(value: string): string[] {
     .filter(Boolean);
 }
 
-export default function SetupPasswordStore({ storepath, onDone }: Props) {
+export default function SetupPasswordStore({
+  storepath,
+  onDone,
+  popOnDone = false,
+}: Props) {
   const { pop } = useNavigation();
   const [isLoading, setIsLoading] = useState(false);
   const [recipientInput, setRecipientInput] = useState("");
@@ -67,7 +72,7 @@ export default function SetupPasswordStore({ storepath, onDone }: Props) {
         result.path,
       );
       await onDone?.();
-      pop();
+      if (popOnDone) pop();
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
