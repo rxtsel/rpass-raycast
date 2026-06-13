@@ -54,7 +54,11 @@ function formatError(error: unknown): string {
 }
 
 function normalizeEntryName(folder: string, name: string): string {
-  const parts = [folder.trim(), name.trim()].filter(Boolean).join("/").split("/").filter(Boolean);
+  const parts = [folder.trim(), name.trim()]
+    .filter(Boolean)
+    .join("/")
+    .split("/")
+    .filter(Boolean);
 
   return parts.join("/");
 }
@@ -64,7 +68,11 @@ function validateEntryName(name: string): string | undefined {
   if (!trimmed) return "Entry name is required";
   if (trimmed.endsWith(".gpg")) return "Entry name must not include .gpg";
   if (trimmed.includes("\\")) return "Use / as the entry separator";
-  if (trimmed.split("/").some((part) => part === "" || part === "." || part === "..")) {
+  if (
+    trimmed
+      .split("/")
+      .some((part) => part === "" || part === "." || part === "..")
+  ) {
     return "Entry name must not contain empty, . or .. segments";
   }
   return undefined;
@@ -160,7 +168,11 @@ export default function Command() {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
-      await showToast(Toast.Style.Failure, "Failed to Generate Secret", message);
+      await showToast(
+        Toast.Style.Failure,
+        "Failed to Generate Secret",
+        message,
+      );
       return undefined;
     } finally {
       setIsLoading(false);
@@ -242,7 +254,9 @@ export default function Command() {
       message: `${force ? "Overwrite" : "Create"} '${entry}' in the password store?`,
       primaryAction: {
         title: force ? "Overwrite Entry" : "Create Entry",
-        style: force ? Alert.ActionStyle.Destructive : Alert.ActionStyle.Default,
+        style: force
+          ? Alert.ActionStyle.Destructive
+          : Alert.ActionStyle.Default,
       },
       dismissAction: {
         title: "Cancel",
@@ -254,7 +268,9 @@ export default function Command() {
     setIsLoading(true);
     setLastError(undefined);
     try {
-      const content = [secret, additionalLines.trim()].filter(Boolean).join("\n");
+      const content = [secret, additionalLines.trim()]
+        .filter(Boolean)
+        .join("\n");
       await writeEntry(entry, storepath, content, { force });
       resetForm();
       await copyPassword(secret);
@@ -279,7 +295,17 @@ export default function Command() {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [kind, length, lowercase, uppercase, numbers, symbols, words, capitalize, appendNumber]);
+  }, [
+    kind,
+    length,
+    lowercase,
+    uppercase,
+    numbers,
+    symbols,
+    words,
+    capitalize,
+    appendNumber,
+  ]);
 
   return (
     <Form
@@ -304,7 +330,10 @@ export default function Command() {
             onSubmit={() => submit({ force: true })}
           />
           {lastError ? (
-            <Action.CopyToClipboard title="Copy Last Error" content={lastError} />
+            <Action.CopyToClipboard
+              title="Copy Last Error"
+              content={lastError}
+            />
           ) : null}
         </ActionPanel>
       }
@@ -319,7 +348,12 @@ export default function Command() {
         <Form.Dropdown.Item value="phrase" title="Passphrase" />
       </Form.Dropdown>
 
-      <Form.Dropdown id="folder" title="Folder" value={selectedFolder} onChange={setSelectedFolder}>
+      <Form.Dropdown
+        id="folder"
+        title="Folder"
+        value={selectedFolder}
+        onChange={setSelectedFolder}
+      >
         <Form.Dropdown.Item value="" title="No Folder" />
         {folders.map((folder) => (
           <Form.Dropdown.Item key={folder} value={folder} title={folder} />
@@ -366,7 +400,8 @@ export default function Command() {
             error={errors.length}
             onChange={(value) => {
               setLength(value);
-              if (errors.length) setErrors((current) => ({ ...current, length: undefined }));
+              if (errors.length)
+                setErrors((current) => ({ ...current, length: undefined }));
             }}
           />
           <Form.Checkbox
@@ -381,9 +416,21 @@ export default function Command() {
             value={uppercase}
             onChange={setUppercase}
           />
-          <Form.Checkbox id="numbers" label="Numbers" value={numbers} onChange={setNumbers} />
-          <Form.Checkbox id="symbols" label="Symbols" value={symbols} onChange={setSymbols} />
-          {errors.characterSet ? <Form.Description text={errors.characterSet} /> : null}
+          <Form.Checkbox
+            id="numbers"
+            label="Numbers"
+            value={numbers}
+            onChange={setNumbers}
+          />
+          <Form.Checkbox
+            id="symbols"
+            label="Symbols"
+            value={symbols}
+            onChange={setSymbols}
+          />
+          {errors.characterSet ? (
+            <Form.Description text={errors.characterSet} />
+          ) : null}
         </>
       ) : (
         <>
@@ -394,7 +441,8 @@ export default function Command() {
             error={errors.words}
             onChange={(value) => {
               setWords(value);
-              if (errors.words) setErrors((current) => ({ ...current, words: undefined }));
+              if (errors.words)
+                setErrors((current) => ({ ...current, words: undefined }));
             }}
           />
           <Form.Checkbox
