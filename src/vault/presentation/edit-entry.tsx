@@ -23,7 +23,7 @@ import {
   forgetStoreUnlock,
   markStoreUnlocked,
   shouldTryAgentUnlock,
-} from "../application/gpg-unlock-session";
+} from "../infrastructure/gpg-unlock-cache";
 import { getEntryParentFolders } from "../domain/entry-folders";
 import {
   formatGpgAwareError,

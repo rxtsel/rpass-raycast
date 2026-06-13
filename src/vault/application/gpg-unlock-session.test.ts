@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import {
+  createGpgUnlockSession,
   forgetStoreUnlock,
   markStoreUnlocked,
   resetUnlockSessionForTests,
@@ -32,4 +33,25 @@ test("store keys are trimmed without exposing passphrases", () => {
   markStoreUnlocked(" /tmp/store ");
 
   assert.equal(shouldTryAgentUnlock("/tmp/store"), true);
+});
+
+test("unlock markers expire", () => {
+  let now = 1000;
+  const storage = new Map<string, string>();
+  const session = createGpgUnlockSession({
+    now: () => now,
+    ttlMs: 500,
+    storage: {
+      get: (key) => storage.get(key),
+      set: (key, value) => storage.set(key, value),
+      remove: (key) => storage.delete(key),
+    },
+  });
+
+  session.markStoreUnlocked("/tmp/store");
+  assert.equal(session.shouldTryAgentUnlock("/tmp/store"), true);
+
+  now = 1501;
+  assert.equal(session.shouldTryAgentUnlock("/tmp/store"), false);
+  assert.equal(storage.size, 0);
 });
