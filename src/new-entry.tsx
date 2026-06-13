@@ -23,7 +23,9 @@ import { getEntryParentFolders } from "./vault/domain/entry-folders";
 import { resolveStorePath } from "./vault/application/store-path";
 import { copyPassword } from "./vault/presentation/clipboard";
 import checkInstall from "./vault/presentation/check-install";
-import SetupPasswordStore from "./vault/presentation/setup-password-store";
+import SetupPasswordStore, {
+  type PasswordStoreSetupReason,
+} from "./vault/presentation/setup-password-store";
 
 const DEFAULT_PASSWORD_LENGTH = "14";
 const DEFAULT_WORDS = "4";
@@ -65,11 +67,11 @@ function normalizeEntryName(folder: string, name: string): string {
   return parts.join("/");
 }
 
-function needsPasswordStoreSetup(error: unknown): boolean {
-  return (
-    error instanceof RpassError &&
-    (error.code === "gpg_id_not_found" || error.code === "store_not_found")
-  );
+function getSetupReason(error: unknown): PasswordStoreSetupReason | undefined {
+  if (!(error instanceof RpassError)) return undefined;
+  if (error.code === "store_not_found") return "store_missing";
+  if (error.code === "gpg_id_not_found") return "gpg_id_missing";
+  return undefined;
 }
 
 function validateEntryName(name: string): string | undefined {
@@ -115,7 +117,7 @@ export default function Command() {
   const [additionalLines, setAdditionalLines] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [lastError, setLastError] = useState<string>();
-  const [setupRequired, setSetupRequired] = useState(false);
+  const [setupReason, setSetupReason] = useState<PasswordStoreSetupReason>();
   const [errors, setErrors] = useState<FormErrors>({});
 
   const entry = useMemo(
@@ -132,13 +134,19 @@ export default function Command() {
     doctor(storepath)
       .then((report) => {
         if (!cancelled) {
-          setSetupRequired(
+          if (
             report.checks.some(
-              (check) =>
-                (check.name === "store_directory" || check.name === "gpg_id") &&
-                !check.ok,
-            ),
-          );
+              (check) => check.name === "store_directory" && !check.ok,
+            )
+          ) {
+            setSetupReason("store_missing");
+          } else if (
+            report.checks.some((check) => check.name === "gpg_id" && !check.ok)
+          ) {
+            setSetupReason("gpg_id_missing");
+          } else {
+            setSetupReason(undefined);
+          }
         }
       })
       .catch(() => {
@@ -151,8 +159,9 @@ export default function Command() {
       })
       .catch((error) => {
         if (!cancelled) {
-          if (needsPasswordStoreSetup(error)) {
-            setSetupRequired(true);
+          const reason = getSetupReason(error);
+          if (reason) {
+            setSetupReason(reason);
           } else {
             const message = formatError(error);
             setLastError(message);
@@ -297,7 +306,7 @@ export default function Command() {
 
     setIsLoading(true);
     setLastError(undefined);
-    setSetupRequired(false);
+    setSetupReason(undefined);
     try {
       const content = [secret, additionalLines.trim()]
         .filter(Boolean)
@@ -309,7 +318,7 @@ export default function Command() {
     } catch (error) {
       const message = formatError(error);
       setLastError(message);
-      setSetupRequired(needsPasswordStoreSetup(error));
+      setSetupReason(getSetupReason(error));
       await showToast(Toast.Style.Failure, "Failed to Create Entry", message);
     } finally {
       setIsLoading(false);
@@ -339,11 +348,12 @@ export default function Command() {
     appendNumber,
   ]);
 
-  if (setupRequired) {
+  if (setupReason) {
     return (
       <SetupPasswordStore
         storepath={storepath}
-        onDone={() => setSetupRequired(false)}
+        reason={setupReason}
+        onDone={() => setSetupReason(undefined)}
       />
     );
   }

@@ -10,8 +10,11 @@ import {
 import { useState } from "react";
 import { initStore, RpassError } from "../../rpass/application/rpass-client";
 
+export type PasswordStoreSetupReason = "store_missing" | "gpg_id_missing";
+
 interface Props {
   storepath: string;
+  reason?: PasswordStoreSetupReason;
   onDone?(): void | Promise<void>;
   popOnDone?: boolean;
 }
@@ -36,8 +39,17 @@ function parseRecipients(value: string): string[] {
     .filter(Boolean);
 }
 
+function setupDescription(reason: PasswordStoreSetupReason): string {
+  if (reason === "store_missing") {
+    return "No password store found. Initialize a new password store with one or more GPG recipients.";
+  }
+
+  return "Password store exists but has no .gpg-id recipients yet. Add one or more GPG recipients before saving passwords.";
+}
+
 export default function SetupPasswordStore({
   storepath,
+  reason = "gpg_id_missing",
   onDone,
   popOnDone = false,
 }: Props) {
@@ -106,7 +118,7 @@ export default function SetupPasswordStore({
       }
     >
       <Form.Description text={`Store: ${storepath}`} />
-      <Form.Description text="This password store has no .gpg-id yet. Initialize it with one or more GPG recipients before saving passwords." />
+      <Form.Description text={setupDescription(reason)} />
       <Form.TextArea
         id="recipients"
         title="GPG Recipients"

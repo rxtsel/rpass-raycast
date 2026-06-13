@@ -25,7 +25,9 @@ import { loadVaultItems } from "../application/load-vault-items";
 import { ALL_FOLDERS, type VaultItem } from "../domain/vault-item";
 import Content from "./content";
 import EditEntry from "./edit-entry";
-import SetupPasswordStore from "./setup-password-store";
+import SetupPasswordStore, {
+  type PasswordStoreSetupReason,
+} from "./setup-password-store";
 
 const FOLDER_TAG_COLOR = "#8E8E93";
 
@@ -58,21 +60,27 @@ function formatError(error: unknown): string {
   return String(error);
 }
 
-function needsPasswordStoreSetup(error: unknown): boolean {
-  return (
-    error instanceof RpassError &&
-    (error.code === "gpg_id_not_found" || error.code === "store_not_found")
-  );
+function getSetupReason(error: unknown): PasswordStoreSetupReason | undefined {
+  if (!(error instanceof RpassError)) return undefined;
+  if (error.code === "store_not_found") return "store_missing";
+  if (error.code === "gpg_id_not_found") return "gpg_id_missing";
+  return undefined;
 }
 
-function needsPasswordStoreSetupFromDoctor(
+function getSetupReasonFromDoctor(
   report: Awaited<ReturnType<typeof doctor>>,
-): boolean {
-  return report.checks.some(
-    (check) =>
-      (check.name === "store_directory" || check.name === "gpg_id") &&
-      !check.ok,
-  );
+): PasswordStoreSetupReason | undefined {
+  if (
+    report.checks.some((check) => check.name === "store_directory" && !check.ok)
+  ) {
+    return "store_missing";
+  }
+
+  if (report.checks.some((check) => check.name === "gpg_id" && !check.ok)) {
+    return "gpg_id_missing";
+  }
+
+  return undefined;
 }
 
 function FolderFilter({
@@ -105,7 +113,7 @@ export default function Store({ storepath }: Props) {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [selectedFolder, setSelectedFolder] = useState(ALL_FOLDERS);
   const [lastError, setLastError] = useState<string>();
-  const [setupRequired, setSetupRequired] = useState(false);
+  const [setupReason, setSetupReason] = useState<PasswordStoreSetupReason>();
   const [isLoading, setIsLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -116,13 +124,14 @@ export default function Store({ storepath }: Props) {
       setItems(loadedItems);
       try {
         const report = await doctor(storepath);
-        setSetupRequired(needsPasswordStoreSetupFromDoctor(report));
+        setSetupReason(getSetupReasonFromDoctor(report));
       } catch {
-        setSetupRequired(false);
+        setSetupReason(undefined);
       }
     } catch (error) {
-      if (needsPasswordStoreSetup(error)) {
-        setSetupRequired(true);
+      const reason = getSetupReason(error);
+      if (reason) {
+        setSetupReason(reason);
         setItems([]);
       } else {
         setLastError(formatError(error));
@@ -179,8 +188,14 @@ export default function Store({ storepath }: Props) {
     [items, selectedFolder],
   );
 
-  if (setupRequired) {
-    return <SetupPasswordStore storepath={storepath} onDone={load} />;
+  if (setupReason) {
+    return (
+      <SetupPasswordStore
+        storepath={storepath}
+        reason={setupReason}
+        onDone={load}
+      />
+    );
   }
 
   if (lastError) {

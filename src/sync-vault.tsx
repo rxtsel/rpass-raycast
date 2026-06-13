@@ -18,7 +18,9 @@ import {
 } from "./rpass/application/rpass-client";
 import { resolveStorePath } from "./vault/application/store-path";
 import checkInstall from "./vault/presentation/check-install";
-import SetupPasswordStore from "./vault/presentation/setup-password-store";
+import SetupPasswordStore, {
+  type PasswordStoreSetupReason,
+} from "./vault/presentation/setup-password-store";
 
 interface CommitItem {
   hash: string;
@@ -73,8 +75,11 @@ function getPrimaryRef(refs: string): string | undefined {
     .find((ref) => ref && !ref.startsWith("HEAD"));
 }
 
-function needsPasswordStoreSetup(error: unknown): boolean {
-  return error instanceof RpassError && error.code === "store_not_found";
+function getSetupReason(error: unknown): PasswordStoreSetupReason | undefined {
+  if (!(error instanceof RpassError)) return undefined;
+  if (error.code === "store_not_found") return "store_missing";
+  if (error.code === "gpg_id_not_found") return "gpg_id_missing";
+  return undefined;
 }
 
 function getRepositoryNotFound(error: unknown): boolean {
@@ -99,14 +104,14 @@ export default function Command() {
   const [status, setStatus] = useState("");
   const [branch, setBranch] = useState<string>();
   const [commits, setCommits] = useState<CommitItem[]>([]);
-  const [setupRequired, setSetupRequired] = useState(false);
+  const [setupReason, setSetupReason] = useState<PasswordStoreSetupReason>();
   const [lastOutput, setLastOutput] = useState<string>();
   const [lastError, setLastError] = useState<string>();
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setLastError(undefined);
-    setSetupRequired(false);
+    setSetupReason(undefined);
     try {
       const statusResult = await gitCommand(["status", "-sb"], storepath);
       const statusText = statusResult.stdout || statusResult.stderr;
@@ -153,11 +158,12 @@ export default function Command() {
         }
       }
     } catch (error) {
-      if (needsPasswordStoreSetup(error)) {
+      const reason = getSetupReason(error);
+      if (reason) {
         setStatus("");
         setBranch(undefined);
         setCommits([]);
-        setSetupRequired(true);
+        setSetupReason(reason);
       } else if (getRepositoryNotFound(error)) {
         setStatus("");
         setBranch(undefined);
@@ -204,7 +210,7 @@ export default function Command() {
 
     setIsLoading(true);
     setLastError(undefined);
-    setSetupRequired(false);
+    setSetupReason(undefined);
     try {
       const result = await gitCommand(args, storepath);
       setLastOutput(formatCommandOutput(result));
@@ -212,8 +218,9 @@ export default function Command() {
       await showToast(Toast.Style.Success, successTitle);
       await refresh();
     } catch (error) {
-      if (needsPasswordStoreSetup(error)) {
-        setSetupRequired(true);
+      const reason = getSetupReason(error);
+      if (reason) {
+        setSetupReason(reason);
       }
       const message = formatError(error);
       setLastError(message);
@@ -226,20 +233,21 @@ export default function Command() {
   const actions = (
     <ActionPanel>
       <Action icon={Icon.ArrowClockwise} title="Refresh" onAction={refresh} />
-      {setupRequired ? (
+      {setupReason ? (
         <Action.Push
           icon={Icon.Hammer}
           title="Initialize Password Store"
           target={
             <SetupPasswordStore
               storepath={storepath}
+              reason={setupReason}
               onDone={refresh}
               popOnDone
             />
           }
         />
       ) : null}
-      {isRepository === false && !setupRequired ? (
+      {isRepository === false && !setupReason ? (
         <Action
           icon={Icon.Hammer}
           title="Initialize Git"
@@ -252,7 +260,7 @@ export default function Command() {
           }
         />
       ) : null}
-      {isRepository !== false && !setupRequired ? (
+      {isRepository !== false && !setupReason ? (
         <>
           <Action
             icon={Icon.Download}
@@ -296,8 +304,14 @@ export default function Command() {
     </ActionPanel>
   );
 
-  if (setupRequired) {
-    return <SetupPasswordStore storepath={storepath} onDone={refresh} />;
+  if (setupReason) {
+    return (
+      <SetupPasswordStore
+        storepath={storepath}
+        reason={setupReason}
+        onDone={refresh}
+      />
+    );
   }
 
   if (isRepository === false) {
