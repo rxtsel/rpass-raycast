@@ -212,16 +212,12 @@ export default function Command() {
           <Action
             icon={Icon.Download}
             title="Pull Vault"
+            shortcut={{ modifiers: ["shift"], key: "enter" }}
             onAction={() =>
               runGitAction({
                 title: "Failed to Pull Vault",
                 successTitle: "Vault Pulled",
                 args: ["pull"],
-                confirm: {
-                  title: "Pull Vault?",
-                  message: "Run git pull in the password store?",
-                  actionTitle: "Pull Vault",
-                },
               })
             }
           />
