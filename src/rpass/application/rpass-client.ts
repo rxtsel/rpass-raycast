@@ -130,7 +130,10 @@ function withRaycastCliPath(pathValue: string | undefined): string {
 }
 
 function getChildEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env, PATH: withRaycastCliPath(process.env.PATH) };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: withRaycastCliPath(process.env.PATH),
+  };
   const gpgExecutable = resolveGpgExecutable();
   if (gpgExecutable) env.PASSWORD_STORE_GPG = gpgExecutable;
   return env;

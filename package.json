@@ -131,6 +131,40 @@
           "value": "120"
         }
       ]
+    },
+    {
+      "name": "gpgRepromptDuration",
+      "type": "dropdown",
+      "title": "GPG Reprompt",
+      "description": "How long to reuse the current GPG agent session before asking for your passphrase again. The passphrase is never stored.",
+      "required": false,
+      "default": "14400000",
+      "data": [
+        {
+          "title": "Immediately",
+          "value": "0"
+        },
+        {
+          "title": "1 hour",
+          "value": "3600000"
+        },
+        {
+          "title": "4 hours",
+          "value": "14400000"
+        },
+        {
+          "title": "8 hours",
+          "value": "28800000"
+        },
+        {
+          "title": "1 day",
+          "value": "86400000"
+        },
+        {
+          "title": "Until Raycast quits",
+          "value": "-1"
+        }
+      ]
     }
   ],
   "title": "RPass"

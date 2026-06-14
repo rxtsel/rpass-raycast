@@ -1,4 +1,6 @@
-const DEFAULT_UNLOCK_MARKER_TTL_MS = 10 * 60 * 1000;
+export const GPG_REPROMPT_IMMEDIATELY = 0;
+export const GPG_REPROMPT_UNTIL_RAYCAST_QUITS = -1;
+export const DEFAULT_GPG_REPROMPT_DURATION_MS = 4 * 60 * 60 * 1000;
 
 interface UnlockMarkerStorage {
   get(key: string): string | undefined;
@@ -14,7 +16,7 @@ interface UnlockMarkerPayload {
 interface UnlockSessionOptions {
   storage?: UnlockMarkerStorage;
   now?: () => number;
-  ttlMs?: number;
+  defaultTtlMs?: number;
 }
 
 const memoryStorage = new Map<string, string>();
@@ -27,7 +29,7 @@ const defaultStorage: UnlockMarkerStorage = {
 };
 
 function storeKey(storeDir: string): string {
-  return `store:${storeDir.trim()}`;
+  return `rpass:gpg-unlock:${storeDir.trim()}`;
 }
 
 function parseMarker(value: string): UnlockMarkerPayload | undefined {
@@ -41,16 +43,29 @@ function parseMarker(value: string): UnlockMarkerPayload | undefined {
   }
 }
 
+export function parseGpgRepromptDuration(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_GPG_REPROMPT_DURATION_MS;
+}
+
 export function createGpgUnlockSession(options: UnlockSessionOptions = {}) {
   const storage = options.storage ?? defaultStorage;
   const now = options.now ?? Date.now;
-  const ttlMs = options.ttlMs ?? DEFAULT_UNLOCK_MARKER_TTL_MS;
+  const defaultTtlMs = options.defaultTtlMs ?? DEFAULT_GPG_REPROMPT_DURATION_MS;
 
-  function markStoreUnlocked(storeDir: string): void {
+  function markStoreUnlocked(storeDir: string, ttlMs = defaultTtlMs): void {
+    if (ttlMs === GPG_REPROMPT_IMMEDIATELY) {
+      storage.remove(storeKey(storeDir));
+      return;
+    }
+
     storage.set(
       storeKey(storeDir),
       JSON.stringify({
-        expiresAt: now() + ttlMs,
+        expiresAt:
+          ttlMs === GPG_REPROMPT_UNTIL_RAYCAST_QUITS
+            ? Number.MAX_SAFE_INTEGER
+            : now() + ttlMs,
       } satisfies UnlockMarkerPayload),
     );
   }

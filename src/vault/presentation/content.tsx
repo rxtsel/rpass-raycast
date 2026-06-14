@@ -14,6 +14,7 @@ import {
   RpassError,
   showEntry,
 } from "../../rpass/application/rpass-client";
+import { parseGpgRepromptDuration } from "../application/gpg-unlock-session";
 import {
   parseVaultEntryRows,
   type VaultEntryRow,
@@ -35,6 +36,7 @@ import OtpRow from "./otp-row";
 
 interface Preferences {
   defaultAction: string;
+  gpgRepromptDuration?: string;
 }
 
 function capitalizeFirstLetter(str: string): string {
@@ -116,18 +118,22 @@ interface PassphraseValues {
 }
 
 export default function Content({ storepath, entry }: Props) {
-  const { defaultAction } = getPreferenceValues<Preferences>();
+  const { defaultAction, gpgRepromptDuration } =
+    getPreferenceValues<Preferences>();
+  const repromptDurationMs = parseGpgRepromptDuration(gpgRepromptDuration);
   const [rows, setRows] = useState<VaultEntryRow[]>([]);
   const [passphrase, setPassphrase] = useState<string>();
   const [needsPassphrase, setNeedsPassphrase] = useState(
-    !shouldTryAgentUnlock(storepath),
+    !shouldTryAgentUnlock(storepath, repromptDurationMs),
   );
   const [passphraseInput, setPassphraseInput] = useState("");
   const [passphraseError, setPassphraseError] = useState<string>();
   const [passphraseVisible, setPassphraseVisible] = useState(false);
   const [lastError, setLastError] = useState<string>();
   const [lastErrorHasGpgHelp, setLastErrorHasGpgHelp] = useState(false);
-  const [isLoading, setIsLoading] = useState(shouldTryAgentUnlock(storepath));
+  const [isLoading, setIsLoading] = useState(
+    shouldTryAgentUnlock(storepath, repromptDurationMs),
+  );
 
   function clearDecryptError() {
     setLastError(undefined);
@@ -165,7 +171,7 @@ export default function Content({ storepath, entry }: Props) {
     setIsLoading(true);
     try {
       const content = await showEntry(entry, storepath, submittedPassphrase);
-      markStoreUnlocked(storepath);
+      markStoreUnlocked(storepath, repromptDurationMs);
       applyLoadedContent(content, submittedPassphrase);
     } catch (error) {
       const message = formatDecryptError(error);
@@ -202,10 +208,10 @@ export default function Content({ storepath, entry }: Props) {
   }
 
   useEffect(() => {
-    if (shouldTryAgentUnlock(storepath)) {
+    if (shouldTryAgentUnlock(storepath, repromptDurationMs)) {
       tryLoadWithAgent();
     }
-  }, [entry, storepath]);
+  }, [entry, repromptDurationMs, storepath]);
 
   function updatePassphraseInput(value: string) {
     setPassphraseInput(value);

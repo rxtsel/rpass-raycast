@@ -4,6 +4,7 @@ import {
   Alert,
   confirmAlert,
   Form,
+  getPreferenceValues,
   Icon,
   popToRoot,
   showToast,
@@ -19,12 +20,13 @@ import {
   showEntryContent,
   writeEntry,
 } from "../../rpass/application/rpass-client";
+import { parseGpgRepromptDuration } from "../application/gpg-unlock-session";
+import { getEntryParentFolders } from "../domain/entry-folders";
 import {
   forgetStoreUnlock,
   markStoreUnlocked,
   shouldTryAgentUnlock,
 } from "../infrastructure/gpg-unlock-cache";
-import { getEntryParentFolders } from "../domain/entry-folders";
 import {
   formatGpgAwareError,
   GpgTimeoutHelp,
@@ -40,6 +42,10 @@ interface Props {
   storepath: string;
   entry: string;
   passphrase?: string;
+}
+
+interface Preferences {
+  gpgRepromptDuration?: string;
 }
 
 interface FormErrors {
@@ -137,6 +143,8 @@ function inferPassphraseOptions(password: string): {
 }
 
 export default function EditEntry({ storepath, entry, passphrase }: Props) {
+  const { gpgRepromptDuration } = getPreferenceValues<Preferences>();
+  const repromptDurationMs = parseGpgRepromptDuration(gpgRepromptDuration);
   const initialPath = splitEntryPath(entry);
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState(initialPath.folder);
@@ -153,10 +161,12 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const [capitalize, setCapitalize] = useState(false);
   const [appendNumber, setAppendNumber] = useState(false);
   const [isLoading, setIsLoading] = useState(
-    passphrase !== undefined || shouldTryAgentUnlock(storepath),
+    passphrase !== undefined ||
+      shouldTryAgentUnlock(storepath, repromptDurationMs),
   );
   const [needsPassphrase, setNeedsPassphrase] = useState(
-    passphrase === undefined && !shouldTryAgentUnlock(storepath),
+    passphrase === undefined &&
+      !shouldTryAgentUnlock(storepath, repromptDurationMs),
   );
   const [unlockPassphrase, setUnlockPassphrase] = useState<string>();
   const [passphraseInput, setPassphraseInput] = useState("");
@@ -228,7 +238,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   useEffect(() => {
     const submittedPassphrase = unlockPassphrase ?? passphrase;
     const canTryAgent =
-      submittedPassphrase === undefined && shouldTryAgentUnlock(storepath);
+      submittedPassphrase === undefined &&
+      shouldTryAgentUnlock(storepath, repromptDurationMs);
 
     if (submittedPassphrase === undefined && !canTryAgent) {
       setNeedsPassphrase(true);
@@ -254,7 +265,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         if (cancelled) return;
 
         if (submittedPassphrase !== undefined) {
-          markStoreUnlocked(storepath);
+          markStoreUnlocked(storepath, repromptDurationMs);
         }
         applyLoadedContent(content);
       } catch (error) {
@@ -284,7 +295,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [entry, passphrase, storepath, unlockPassphrase]);
+  }, [entry, passphrase, repromptDurationMs, storepath, unlockPassphrase]);
 
   function validateSecretOptions(): boolean {
     const nextErrors: FormErrors = {};
