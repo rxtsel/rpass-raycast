@@ -53,28 +53,11 @@ By default, the extension uses:
 
 You can choose a different folder in the extension preference **Password Store Directory**.
 
-If the selected store does not exist or has no `.gpg-id`, the extension will show a setup form. Enter one or more GPG recipients, such as an email, key ID, or fingerprint. The extension initializes the store with:
+If the selected store does not exist or has no `.gpg-id`, the extension will show a setup form. Enter one or more GPG recipients, such as an email, key ID, or fingerprint, and the extension will initialize the store for you.
 
-```bash
-rpass init <recipient...>
-```
+### Optional Git Sync
 
-### Optional Git sync
-
-If your password store is a Git repository, write commands are committed automatically by `rpass`.
-
-To initialize Git history for a new store, run:
-
-```bash
-rpass git init
-```
-
-Then configure your remote as usual:
-
-```bash
-rpass git remote add origin <repo-url>
-rpass git push -u origin main
-```
+If your password store is a Git repository, write commands are committed automatically by `rpass`. Use the **Sync Vault** command to initialize Git for a new store, view recent history, pull changes, or push local commits.
 
 ## Usage
 
