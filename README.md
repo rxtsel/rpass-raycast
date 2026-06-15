@@ -41,8 +41,6 @@ Raycast may not inherit the same `PATH` as your shell. The extension automatical
 /Users/<you>/.cargo/bin/rpass
 ```
 
-The **GPG Reprompt** preference controls how long the extension should try the existing GPG agent session before asking for your passphrase again. The passphrase itself is never stored.
-
 ### Select your password store
 
 `rpass` uses the standard [password-store](https://www.passwordstore.org/) format: entries are encrypted files such as `example/login.gpg`, recipients are stored in `.gpg-id`, and decrypted entries keep the password on the first line.
