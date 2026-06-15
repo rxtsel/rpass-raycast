@@ -5,7 +5,7 @@
 
 # rPass Vault
 
-Manage your pass-compatible password store directly from Raycast
+Manage your pass-compatible password vault without leaving Raycast
 
 🔎 &nbsp; Search your vault &nbsp; 📋 &nbsp; Copy and paste fields &nbsp; 🔐 &nbsp; Generate passwords and passphrases &nbsp; ⏱️ &nbsp; Use TOTP codes &nbsp; 🔄 &nbsp; Sync with Git
 

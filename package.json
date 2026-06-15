@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "rpass",
-  "description": "Manage your pass-compatible password store with rpass. Cross-platform GPG encryption and TOTP support.",
+  "description": "Search, edit, generate, and sync your pass-compatible passwords from Raycast.",
   "categories": [
     "Productivity",
     "Security"
