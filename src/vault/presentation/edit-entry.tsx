@@ -94,7 +94,11 @@ function validateEntryName(name: string): string | undefined {
   if (!trimmed) return "Entry name is required";
   if (trimmed.endsWith(".gpg")) return "Entry name must not include .gpg";
   if (trimmed.includes("\\")) return "Use / as the entry separator";
-  if (trimmed.split("/").some((part) => part === "" || part === "." || part === "..")) {
+  if (
+    trimmed
+      .split("/")
+      .some((part) => part === "" || part === "." || part === "..")
+  ) {
     return "Entry name must not contain empty, . or .. segments";
   }
   return undefined;
@@ -110,7 +114,8 @@ function inferSecretKind(password: string): SecretKind {
 
   const wordParts = parts.filter((part) => /^[a-z]+$/i.test(part));
   const numericParts = parts.filter((part) => /^\d+$/.test(part));
-  return wordParts.length >= 3 && wordParts.length + numericParts.length === parts.length
+  return wordParts.length >= 3 &&
+    wordParts.length + numericParts.length === parts.length
     ? "phrase"
     : "password";
 }
@@ -133,7 +138,9 @@ function inferPassphraseOptions(password: string): {
 
 export default function EditEntry({ storepath, entry, passphrase }: Props) {
   const initialPath = splitEntryPath(entry);
-  const [folders, setFolders] = useState<string[]>(() => getEntryParentFolders([entry]));
+  const [folders, setFolders] = useState<string[]>(() =>
+    getEntryParentFolders([entry]),
+  );
   const [selectedFolder, setSelectedFolder] = useState(initialPath.folder);
   const [entryName, setEntryName] = useState(initialPath.name);
   const [password, setPassword] = useState("");
@@ -182,12 +189,15 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
   function shouldPromptForPassphrase(error: unknown): boolean {
     return (
-      (error instanceof RpassError && error.code === "gpg_passphrase_required") ||
+      (error instanceof RpassError &&
+        error.code === "gpg_passphrase_required") ||
       isGpgTimeoutOrPinentryError(error)
     );
   }
 
-  function applyLoadedContent(content: Awaited<ReturnType<typeof showEntryContent>>) {
+  function applyLoadedContent(
+    content: Awaited<ReturnType<typeof showEntryContent>>,
+  ) {
     setPassword(content.password);
     skipNextOptionsRegenerateRef.current = true;
     const inferredKind = inferSecretKind(content.password);
@@ -219,7 +229,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
 
   useEffect(() => {
     const submittedPassphrase = unlockPassphrase ?? passphrase;
-    const canTryAgent = submittedPassphrase === undefined && shouldTryAgentUnlock(storepath);
+    const canTryAgent =
+      submittedPassphrase === undefined && shouldTryAgentUnlock(storepath);
 
     if (submittedPassphrase === undefined && !canTryAgent) {
       setNeedsPassphrase(true);
@@ -238,7 +249,9 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
           entry,
           storepath,
           submittedPassphrase,
-          canTryAgent ? { timeoutMs: OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS } : undefined,
+          canTryAgent
+            ? { timeoutMs: OPTIMISTIC_AGENT_UNLOCK_TIMEOUT_MS }
+            : undefined,
         );
         if (cancelled) return;
 
@@ -257,7 +270,11 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             setLastError(message);
             setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
             setErrors((current) => ({ ...current, passphrase: message }));
-            await showToast(Toast.Style.Failure, "Failed to Load Entry", message);
+            await showToast(
+              Toast.Style.Failure,
+              "Failed to Load Entry",
+              message,
+            );
           }
         }
       } finally {
@@ -349,7 +366,11 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
       const message = formatError(error);
       setLastError(message);
       setLastErrorHasGpgHelp(isGpgTimeoutOrPinentryError(error));
-      await showToast(Toast.Style.Failure, "Failed to Generate Secret", message);
+      await showToast(
+        Toast.Style.Failure,
+        "Failed to Generate Secret",
+        message,
+      );
     } finally {
       setIsLoading(false);
     }
@@ -371,7 +392,17 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [kind, length, lowercase, uppercase, numbers, symbols, words, capitalize, appendNumber]);
+  }, [
+    kind,
+    length,
+    lowercase,
+    uppercase,
+    numbers,
+    symbols,
+    words,
+    capitalize,
+    appendNumber,
+  ]);
 
   async function save() {
     if (!validate()) return;
@@ -397,7 +428,9 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     setLastError(undefined);
     setLastErrorHasGpgHelp(false);
     try {
-      const content = [password, additionalLines.trim()].filter(Boolean).join("\n");
+      const content = [password, additionalLines.trim()]
+        .filter(Boolean)
+        .join("\n");
       if (isMoving) {
         await moveEntry(entry, newEntry, storepath);
       }
@@ -432,10 +465,16 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
               onAction={() => setPassphraseVisible((visible) => !visible)}
             />
             {lastErrorHasGpgHelp ? (
-              <Action.Push title="Show Setup Instructions" target={<GpgTimeoutHelp />} />
+              <Action.Push
+                title="Show Setup Instructions"
+                target={<GpgTimeoutHelp />}
+              />
             ) : null}
             {lastError ? (
-              <Action.CopyToClipboard title="Copy Last Error" content={lastError} />
+              <Action.CopyToClipboard
+                title="Copy Last Error"
+                content={lastError}
+              />
             ) : null}
           </ActionPanel>
         }
@@ -478,7 +517,11 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
       isLoading={isLoading}
       actions={
         <ActionPanel>
-          <Action.SubmitForm icon={Icon.CheckCircle} title="Update Entry" onSubmit={save} />
+          <Action.SubmitForm
+            icon={Icon.CheckCircle}
+            title="Update Entry"
+            onSubmit={save}
+          />
           <Action
             icon={Icon.ArrowClockwise}
             title="Regenerate Secret"
@@ -486,15 +529,26 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             onAction={regenerateSecret}
           />
           {lastErrorHasGpgHelp ? (
-            <Action.Push title="Show Setup Instructions" target={<GpgTimeoutHelp />} />
+            <Action.Push
+              title="Show Setup Instructions"
+              target={<GpgTimeoutHelp />}
+            />
           ) : null}
           {lastError ? (
-            <Action.CopyToClipboard title="Copy Last Error" content={lastError} />
+            <Action.CopyToClipboard
+              title="Copy Last Error"
+              content={lastError}
+            />
           ) : null}
         </ActionPanel>
       }
     >
-      <Form.Dropdown id="folder" title="Folder" value={selectedFolder} onChange={setSelectedFolder}>
+      <Form.Dropdown
+        id="folder"
+        title="Folder"
+        value={selectedFolder}
+        onChange={setSelectedFolder}
+      >
         <Form.Dropdown.Item value="" title="No Folder" />
         {folders.map((folder) => (
           <Form.Dropdown.Item key={folder} value={folder} title={folder} />
@@ -507,7 +561,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         error={errors.entryName}
         onChange={(value) => {
           setEntryName(value);
-          if (errors.entryName) setErrors((current) => ({ ...current, entryName: undefined }));
+          if (errors.entryName)
+            setErrors((current) => ({ ...current, entryName: undefined }));
         }}
         onBlur={() =>
           setErrors((current) => ({
@@ -524,7 +579,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
         error={errors.password}
         onChange={(value) => {
           setPassword(value);
-          if (errors.password) setErrors((current) => ({ ...current, password: undefined }));
+          if (errors.password)
+            setErrors((current) => ({ ...current, password: undefined }));
         }}
       />
       <Form.TextArea
@@ -553,7 +609,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             error={errors.length}
             onChange={(value) => {
               setLength(value);
-              if (errors.length) setErrors((current) => ({ ...current, length: undefined }));
+              if (errors.length)
+                setErrors((current) => ({ ...current, length: undefined }));
             }}
           />
           <Form.Checkbox
@@ -568,9 +625,21 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             value={uppercase}
             onChange={setUppercase}
           />
-          <Form.Checkbox id="numbers" label="Numbers" value={numbers} onChange={setNumbers} />
-          <Form.Checkbox id="symbols" label="Symbols" value={symbols} onChange={setSymbols} />
-          {errors.characterSet ? <Form.Description text={errors.characterSet} /> : null}
+          <Form.Checkbox
+            id="numbers"
+            label="Numbers"
+            value={numbers}
+            onChange={setNumbers}
+          />
+          <Form.Checkbox
+            id="symbols"
+            label="Symbols"
+            value={symbols}
+            onChange={setSymbols}
+          />
+          {errors.characterSet ? (
+            <Form.Description text={errors.characterSet} />
+          ) : null}
         </>
       ) : (
         <>
@@ -581,7 +650,8 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
             error={errors.words}
             onChange={(value) => {
               setWords(value);
-              if (errors.words) setErrors((current) => ({ ...current, words: undefined }));
+              if (errors.words)
+                setErrors((current) => ({ ...current, words: undefined }));
             }}
           />
           <Form.Checkbox
