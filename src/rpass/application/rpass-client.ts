@@ -372,7 +372,12 @@ export async function doctor(storeDir: string): Promise<DoctorReport> {
     "--json",
   ]);
   if (stdout.trim()) return parseJson<DoctorReport>(stdout);
-  if (code === 0) return parseJson<DoctorReport>(stdout);
+  if (code === 0) {
+    throw new RpassError(
+      "rpass_empty_output",
+      "rpass exited successfully without producing output",
+    );
+  }
   throw parseRpassError(stderr, code);
 }
 

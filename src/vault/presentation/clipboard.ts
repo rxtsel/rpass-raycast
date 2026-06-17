@@ -1,9 +1,5 @@
 import { Clipboard, getPreferenceValues, showHUD } from "@raycast/api";
 
-interface Preferences {
-  clipboardTimeout: string;
-}
-
 function timeoutSeconds(): number {
   const { clipboardTimeout } = getPreferenceValues<Preferences>();
   return parseInt(clipboardTimeout, 10) || 0;
