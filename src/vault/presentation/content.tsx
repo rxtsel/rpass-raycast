@@ -33,10 +33,6 @@ import {
 import { getOptionIcon } from "./icons";
 import OtpRow from "./otp-row";
 
-interface Preferences {
-  defaultAction: string;
-}
-
 function capitalizeFirstLetter(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
