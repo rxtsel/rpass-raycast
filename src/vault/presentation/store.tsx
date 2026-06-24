@@ -249,6 +249,7 @@ export default function Store({ storepath }: Props) {
           icon={getVaultItemIcon(item)}
           title={item.name}
           subtitle={item.label}
+          keywords={[item.entry, item.folder].filter(Boolean) as string[]}
           accessories={getVaultItemAccessories(item)}
           actions={
             <ActionPanel>
