@@ -279,9 +279,7 @@ function formatShowEntryOutput(entry: ShowEntryJson): string {
     ...entry.fields.map((field) => `${field.name}: ${field.value}`),
     entry.otp_uri,
     ...entry.extra_lines,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
 }
 
 export async function showEntryContent(

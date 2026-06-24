@@ -285,8 +285,7 @@ export default function Command() {
   async function submit({ force = false }: { force?: boolean } = {}) {
     if (!validate()) return;
 
-    const secret = generatedSecret || (await regenerateSecret());
-    if (!secret) return;
+    const secret = generatedSecret;
 
     const confirmed = await confirmAlert({
       title: force ? "Overwrite Entry?" : "Create Entry?",
@@ -308,12 +307,10 @@ export default function Command() {
     setLastError(undefined);
     setSetupReason(undefined);
     try {
-      const content = [secret, additionalLines.trim()]
-        .filter(Boolean)
-        .join("\n");
+      const content = [secret, additionalLines.trim()].join("\n");
       await writeEntry(entry, storepath, content, { force });
       resetForm();
-      await copyPassword(secret);
+      if (secret) await copyPassword(secret);
       await popToRoot({ clearSearchBar: true });
     } catch (error) {
       const message = formatError(error);

@@ -313,7 +313,6 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
   function validate(): boolean {
     const nextErrors: FormErrors = {};
     nextErrors.entryName = validateEntryName(entryName);
-    if (!password) nextErrors.password = "Password is required";
     setErrors(nextErrors);
     return Object.values(nextErrors).every((error) => error === undefined);
   }
@@ -429,9 +428,7 @@ export default function EditEntry({ storepath, entry, passphrase }: Props) {
     setLastErrorHasGpgHelp(false);
     let wroteNewEntry = false;
     try {
-      const content = [password, additionalLines.trim()]
-        .filter(Boolean)
-        .join("\n");
+      const content = [password, additionalLines.trim()].join("\n");
       await writeEntry(newEntry, storepath, content, { force: true });
       wroteNewEntry = true;
       if (isMoving) {
